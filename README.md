@@ -16,7 +16,6 @@ The `identity-access-service` handles user authentication, JWT issuance, Role-Ba
 
 - **Base URL**: `http://localhost:8080/api/v1`
 - **Swagger UI**: `http://localhost:8080/swagger-ui.html`
-- **Full Endpoint Documentation**: Comprehensive endpoint specifications, request/response schemas, and error codes live in the [Shared API Standard](#) and [Group 1 API Reference Documentation](#). *(Placeholder links — replace with actual documentation URLs)*
 
 ## Getting Started (Local Development)
 
