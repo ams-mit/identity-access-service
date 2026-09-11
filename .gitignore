@@ -33,6 +33,7 @@ build/
 .vscode/
 
 ### Env / secrets ###
-application-local.yml
 application-secrets.yml
 *.pem
+.env
+
