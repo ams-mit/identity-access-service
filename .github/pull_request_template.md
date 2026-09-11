@@ -1,6 +1,3 @@
-## Story
-Jira ID: G1-__
-
 ## What changed
 -
 
