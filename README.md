@@ -38,7 +38,29 @@ docker run --name identity-mysql \
   -d mysql:8.0
 ```
 
-### 3. Run the Application
+### 3. Generate Local RSA Key Pair (RS256)
+
+The service signs JWTs using RS256 asymmetric keys and requires a private/public key pair. You can generate a 2048-bit RSA key pair in PKCS#8 / X.509 PEM format using the included generator:
+
+```bash
+# Linux / macOS
+./mvnw compile exec:java -Dexec.mainClass="lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator"
+
+# Windows
+.\mvnw.cmd compile exec:java -Dexec.mainClass="lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator"
+```
+
+This generates `certs/private_key.pem` and `certs/public_key.pem` in the project root. Alternatively, using OpenSSL:
+
+```bash
+mkdir -p certs
+openssl genpkey -algorithm RSA -out certs/private_key.pem -pkeyopt rsa_keygen_bits:2048
+openssl rsa -pubout -in certs/private_key.pem -out certs/public_key.pem
+```
+
+> **Note**: Key files in `certs/` and `*.pem` are ignored by git and must never be committed. Configure paths in your `.env` file via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`.
+
+### 4. Run the Application
 
 Run the application with the default `local` Spring profile:
 
@@ -52,7 +74,7 @@ Run the application with the default `local` Spring profile:
 
 Flyway will automatically apply database migrations on startup.
 
-### 4. Run Tests
+### 5. Run Tests
 
 To execute the test suite:
 
