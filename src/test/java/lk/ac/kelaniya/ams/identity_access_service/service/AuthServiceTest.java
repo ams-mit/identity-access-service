@@ -444,4 +444,120 @@ class AuthServiceTest {
         assertThat(savedUser.getLockedUntil()).isNull();
         assertThat(savedUser.isAccountLocked()).isFalse();
     }
+
+    @Test
+    @DisplayName("login: failed attempt reaching exactly 4 (boundary) increments counter to 4 and does NOT lock account")
+    void testLogin_failedAttemptExactlyFour_doesNotLockAccount() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(3)
+                .lockedUntil(null)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getFailedAttemptCount()).isEqualTo(4);
+        assertThat(savedUser.getLockedUntil()).isNull();
+        assertThat(savedUser.isAccountLocked()).isFalse();
+    }
+
+    @Test
+    @DisplayName("register: email with leading/trailing whitespace and uppercase is trimmed and normalized to lowercase")
+    void testRegister_emailWithUppercaseAndWhitespace_isTrimmedAndNormalized() {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName(" Alice ")
+                .lastName(" Smith ")
+                .email("  ALICE.SMITH@EXAMPLE.COM  ")
+                .phone(" +94771234567 ")
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        given(userRepository.existsByEmail("alice.smith@example.com")).willReturn(false);
+        given(passwordEncoder.encode("SecurePass1")).willReturn("hashed-password");
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> {
+            User u = invocation.getArgument(0);
+            u.setId(UUID.randomUUID());
+            return u;
+        });
+
+        RegisterResponse response = authService.register(request);
+
+        assertThat(response.getEmail()).isEqualTo("alice.smith@example.com");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getEmail()).isEqualTo("alice.smith@example.com");
+        assertThat(savedUser.getUsername()).isEqualTo("alice.smith@example.com");
+        assertThat(savedUser.getFirstName()).isEqualTo("Alice");
+        assertThat(savedUser.getLastName()).isEqualTo("Smith");
+        assertThat(savedUser.getPhone()).isEqualTo("+94771234567");
+    }
+
+    @Test
+    @DisplayName("register: duplicate email check is case-insensitive and rejects uppercase duplicate")
+    void testRegister_caseInsensitiveDuplicateEmail_throwsDuplicateEmailException() {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Alice")
+                .lastName("Smith")
+                .email("ALICE.SMITH@EXAMPLE.COM")
+                .phone("+94771234567")
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        given(userRepository.existsByEmail("alice.smith@example.com")).willReturn(true);
+
+        assertThatThrownBy(() -> authService.register(request))
+                .isInstanceOf(DuplicateEmailException.class)
+                .hasMessage("Email already in use");
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("login: email lookup is case-insensitive and trims whitespace")
+    void testLogin_emailWithMixedCaseAndWhitespace_authenticatesSuccessfully() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(0)
+                .build();
+        Role role = Role.builder().name("RESIDENT").build();
+        user.addRole(role);
+
+        LoginRequest mixedCaseRequest = LoginRequest.builder()
+                .email("  ALICE.SMITH@EXAMPLE.COM  ")
+                .password("StrongPassword1")
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("alice.smith@example.com"), any())).willReturn("mock.jwt.token");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(mixedCaseRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("mock.jwt.token");
+        assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
+    }
 }
