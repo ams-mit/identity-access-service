@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://identity-mysql:3306/identity_db}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+jwt:
+  private-key-path: ${JWT_PRIVATE_KEY_PATH}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH}
+  expiration-seconds: 3600

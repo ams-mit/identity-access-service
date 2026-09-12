@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: identity-access-service
+  profiles:
+    active: local
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+  flyway:
+    enabled: true
+server:
+  port: ${SERVER_PORT:8080}
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+jwt:
+  private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
+  expiration-seconds: 1800
