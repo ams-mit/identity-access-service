@@ -404,4 +404,27 @@ class AuthControllerTest {
                         .header("Authorization", "Bearer " + invalidToken))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/register returns 409 when DataIntegrityViolationException occurs on concurrent duplicate")
+    void testRegister_concurrencyDataIntegrityViolation_returns409() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.doe@example.com")
+                .phone("+94771234567")
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        given(authService.register(any(RegisterRequest.class)))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("Duplicate entry for key 'users.email'"));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("EMAIL_ALREADY_EXISTS")))
+                .andExpect(jsonPath("$.error.message", containsString("Email is already registered")));
+    }
 }
