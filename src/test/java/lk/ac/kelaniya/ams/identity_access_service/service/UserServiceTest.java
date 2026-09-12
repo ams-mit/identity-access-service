@@ -109,4 +109,25 @@ class UserServiceTest {
                 .hasMessageContaining("Account has been deactivated")
                 .satisfies(ex -> assertThat(((AccountStatusException) ex).getErrorCode()).isEqualTo("ACCOUNT_DEACTIVATED"));
     }
+
+    @Test
+    @DisplayName("getCurrentUser rejects previously active user if database status has been updated to DEACTIVATED")
+    void testGetCurrentUser_accountDeactivatedAfterTokenIssued_rejectedWithAccountStatusException() {
+        UUID userId = UUID.randomUUID();
+        // User was originally ACTIVE when token was issued, but database status was subsequently set to DEACTIVATED
+        User deactivatedInDbUser = User.builder()
+                .id(userId)
+                .email("originally.active@example.com")
+                .firstName("Original")
+                .lastName("User")
+                .accountStatus(AccountStatus.DEACTIVATED)
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(deactivatedInDbUser));
+
+        assertThatThrownBy(() -> userService.getCurrentUser(userId))
+                .isInstanceOf(AccountStatusException.class)
+                .hasMessageContaining("Account has been deactivated")
+                .satisfies(ex -> assertThat(((AccountStatusException) ex).getErrorCode()).isEqualTo("ACCOUNT_DEACTIVATED"));
+    }
 }

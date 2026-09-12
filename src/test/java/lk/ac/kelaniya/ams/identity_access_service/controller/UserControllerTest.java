@@ -137,4 +137,33 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.error.code", is("ACCOUNT_DEACTIVATED")))
                 .andExpect(jsonPath("$.error.message", is("Account has been deactivated. Please contact support.")));
     }
+
+    @Test
+    @DisplayName("GET /api/v1/users/me returns 401 when Bearer token is expired")
+    void testGetCurrentUser_expiredToken_returns401() throws Exception {
+        String expiredToken = "expired.bearer.token";
+        given(jwtService.parseAndValidateToken(expiredToken))
+                .willThrow(new io.jsonwebtoken.ExpiredJwtException(null, null, "JWT expired at 2026-09-12T16:00:00Z"));
+
+        mockMvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + expiredToken))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/me returns 403 when token was issued while ACTIVE but account deactivated in DB afterward")
+    void testGetCurrentUser_tokenIssuedWhileActive_accountDeactivatedInDbAfterward_returns403() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.jwt.issued.while.active";
+
+        mockValidToken(validToken, userId, "active.at.issuance@example.com", List.of("ROLE_RESIDENT"));
+        given(userService.getCurrentUser(userId))
+                .willThrow(new AccountStatusException("ACCOUNT_DEACTIVATED", "Account has been deactivated. Please contact support."));
+
+        mockMvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + validToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("ACCOUNT_DEACTIVATED")))
+                .andExpect(jsonPath("$.error.message", is("Account has been deactivated. Please contact support.")));
+    }
 }
