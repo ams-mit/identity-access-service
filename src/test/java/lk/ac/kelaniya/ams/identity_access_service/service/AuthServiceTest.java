@@ -1,12 +1,18 @@
 package lk.ac.kelaniya.ams.identity_access_service.service;
 
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.RegisterRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
+import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -17,11 +23,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -35,20 +44,29 @@ class AuthServiceTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private JwtService jwtService;
+
     @InjectMocks
     private AuthService authService;
 
-    private RegisterRequest validRequest;
+    private RegisterRequest validRegisterRequest;
+    private LoginRequest validLoginRequest;
 
     @BeforeEach
     void setUp() {
-        validRequest = RegisterRequest.builder()
+        validRegisterRequest = RegisterRequest.builder()
                 .firstName("Alice")
                 .lastName("Smith")
                 .email("alice.smith@example.com")
                 .phone("+94712345678")
                 .password("StrongPassword1")
                 .confirmPassword("StrongPassword1")
+                .build();
+
+        validLoginRequest = LoginRequest.builder()
+                .email("alice.smith@example.com")
+                .password("StrongPassword1")
                 .build();
     }
 
@@ -66,7 +84,7 @@ class AuthServiceTest {
             return user;
         });
 
-        RegisterResponse response = authService.register(validRequest);
+        RegisterResponse response = authService.register(validRegisterRequest);
 
         assertThat(response).isNotNull();
         assertThat(response.getUserId()).isEqualTo(expectedId);
@@ -86,9 +104,9 @@ class AuthServiceTest {
     @Test
     @DisplayName("register throws PasswordMismatchException when passwords differ")
     void testRegister_passwordMismatch() {
-        validRequest.setConfirmPassword("MismatchPassword2");
+        validRegisterRequest.setConfirmPassword("MismatchPassword2");
 
-        assertThatThrownBy(() -> authService.register(validRequest))
+        assertThatThrownBy(() -> authService.register(validRegisterRequest))
                 .isInstanceOf(PasswordMismatchException.class)
                 .hasMessage("Passwords do not match");
 
@@ -102,11 +120,157 @@ class AuthServiceTest {
     void testRegister_duplicateEmail() {
         given(userRepository.existsByEmail("alice.smith@example.com")).willReturn(true);
 
-        assertThatThrownBy(() -> authService.register(validRequest))
+        assertThatThrownBy(() -> authService.register(validRegisterRequest))
                 .isInstanceOf(DuplicateEmailException.class)
                 .hasMessage("Email already in use");
 
         verify(userRepository, never()).save(any());
         verify(passwordEncoder, never()).encode(any());
+    }
+
+    @Test
+    @DisplayName("login succeeds for ACTIVE user with matching password, issuing RS256 token")
+    void testLogin_success() {
+        UUID userId = UUID.randomUUID();
+        User activeUser = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+        Role role = Role.builder().name("RESIDENT").build();
+        activeUser.addRole(role);
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(activeUser));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("alice.smith@example.com"), any())).willReturn("mock.jwt.token");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(validLoginRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("mock.jwt.token");
+        assertThat(response.getExpiresIn()).isEqualTo(1800L);
+        assertThat(response.getUser()).isNotNull();
+        assertThat(response.getUser().getUserId()).isEqualTo(userId);
+        assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
+        assertThat(response.getUser().getRoles()).containsExactly("RESIDENT");
+    }
+
+    @Test
+    @DisplayName("login throws generic InvalidCredentialsException when email is not found")
+    void testLogin_unknownEmail_throwsGeneric401() {
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        verify(passwordEncoder, never()).matches(any(), any());
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login throws generic InvalidCredentialsException with identical message when password is wrong")
+    void testLogin_wrongPassword_throwsGeneric401() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login rejects PENDING_VERIFICATION account with 403 after password matches")
+    void testLogin_pendingVerification_throws403() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(AccountStatusException.class)
+                .hasMessageContaining("pending verification");
+
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login rejects SUSPENDED account with 403 after password matches")
+    void testLogin_suspended_throws403() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.SUSPENDED)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(AccountStatusException.class)
+                .hasMessageContaining("suspended");
+
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login rejects DEACTIVATED account with 403 after password matches")
+    void testLogin_deactivated_throws403() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.DEACTIVATED)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(AccountStatusException.class)
+                .hasMessageContaining("deactivated");
+
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login verifies password BEFORE checking status to prevent email enumeration")
+    void testLogin_wrongPasswordOnPendingAccount_returnsGeneric401Not403() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(false);
+
+        // Crucial security test: Must throw InvalidCredentialsException (401), NOT AccountStatusException (403)!
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
     }
 }

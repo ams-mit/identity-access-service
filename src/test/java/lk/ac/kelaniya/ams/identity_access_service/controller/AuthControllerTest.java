@@ -1,11 +1,15 @@
 package lk.ac.kelaniya.ams.identity_access_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.RegisterRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
 import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
 import lk.ac.kelaniya.ams.identity_access_service.service.AuthService;
@@ -18,6 +22,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
@@ -186,5 +191,147 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 200 with LoginResponse on valid credentials")
+    void testLogin_success() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("john.doe@example.com")
+                .password("SecretPass123")
+                .build();
+
+        UUID userId = UUID.randomUUID();
+        LoginResponse response = LoginResponse.builder()
+                .accessToken("mocked.rs256.jwt.token")
+                .expiresIn(1800L)
+                .user(LoginResponse.UserSummary.builder()
+                        .userId(userId)
+                        .email("john.doe@example.com")
+                        .roles(List.of("RESIDENT"))
+                        .build())
+                .build();
+
+        given(authService.login(any(LoginRequest.class))).willReturn(response);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.accessToken", is("mocked.rs256.jwt.token")))
+                .andExpect(jsonPath("$.expiresIn", is(1800)))
+                .andExpect(jsonPath("$.user.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.user.email", is("john.doe@example.com")))
+                .andExpect(jsonPath("$.user.roles[0]", is("RESIDENT")))
+                .andExpect(content().string(not(containsString("SecretPass123"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns generic 401 on invalid credentials")
+    void testLogin_invalidCredentials_returns401() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("unknown@example.com")
+                .password("WrongPassword123")
+                .build();
+
+        given(authService.login(any(LoginRequest.class)))
+                .willThrow(new InvalidCredentialsException("Invalid email or password."));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("INVALID_CREDENTIALS")))
+                .andExpect(jsonPath("$.error.message", is("Invalid email or password.")))
+                .andExpect(content().string(not(containsString("WrongPassword123"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 403 on PENDING_VERIFICATION account")
+    void testLogin_pendingVerification_returns403() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("pending@example.com")
+                .password("CorrectPassword123")
+                .build();
+
+        given(authService.login(any(LoginRequest.class)))
+                .willThrow(new AccountStatusException("ACCOUNT_PENDING_VERIFICATION", "Account is pending verification. Please verify your email before logging in."));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("ACCOUNT_PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.error.message", containsString("pending verification")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 403 on SUSPENDED account")
+    void testLogin_suspended_returns403() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("suspended@example.com")
+                .password("CorrectPassword123")
+                .build();
+
+        given(authService.login(any(LoginRequest.class)))
+                .willThrow(new AccountStatusException("ACCOUNT_SUSPENDED", "Account has been suspended. Please contact support."));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("ACCOUNT_SUSPENDED")))
+                .andExpect(jsonPath("$.error.message", containsString("suspended")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 403 on DEACTIVATED account")
+    void testLogin_deactivated_returns403() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("deactivated@example.com")
+                .password("CorrectPassword123")
+                .build();
+
+        given(authService.login(any(LoginRequest.class)))
+                .willThrow(new AccountStatusException("ACCOUNT_DEACTIVATED", "Account has been deactivated. Please contact support."));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("ACCOUNT_DEACTIVATED")))
+                .andExpect(jsonPath("$.error.message", containsString("deactivated")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 400 on invalid email format")
+    void testLogin_invalidEmail_returns400() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("invalid-email-format")
+                .password("CorrectPassword123")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Email must be a valid email address")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 400 when password is blank")
+    void testLogin_blankPassword_returns400() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("valid@example.com")
+                .password("")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Password is required")));
     }
 }

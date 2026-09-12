@@ -1,17 +1,29 @@
 package lk.ac.kelaniya.ams.identity_access_service;
 
 import lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+import javax.sql.DataSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+		"spring.flyway.enabled=false",
+		"spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQLDialect"
+})
 class IdentityAccessServiceApplicationTests {
+
+	@MockBean
+	private DataSource dataSource;
+
+	@MockBean
+	private Flyway flyway;
 
 	@DynamicPropertySource
 	static void rsaKeyProperties(DynamicPropertyRegistry registry) throws Exception {

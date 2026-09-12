@@ -25,9 +25,9 @@ public class RsaKeyProperties {
     private String publicKeyPath;
 
     /**
-     * Expiration time in seconds for issued JWTs (default: 3600).
+     * Expiration time in seconds for issued JWTs (default: 1800 / 30 minutes).
      */
-    private long expirationSeconds = 3600;
+    private long expirationSeconds = 1800;
 
     /**
      * Key ID (kid) associated with the RSA key pair for JWKS and JWT headers.
