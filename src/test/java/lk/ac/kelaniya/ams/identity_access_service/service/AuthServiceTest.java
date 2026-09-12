@@ -7,6 +7,7 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
@@ -23,6 +24,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -272,5 +275,173 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.login(validLoginRequest))
                 .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Invalid email or password.");
+    }
+
+    @Test
+    @DisplayName("login: 5 consecutive failures triggers lockout, setting lockedUntil 15 minutes in future")
+    void testLogin_fiveConsecutiveFailures_triggersLockout() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(4)
+                .lockedUntil(null)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(false);
+
+        Instant before = Instant.now().plus(Duration.ofMinutes(14)).plus(Duration.ofSeconds(50));
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getFailedAttemptCount()).isEqualTo(5);
+        assertThat(savedUser.getLockedUntil()).isNotNull();
+        assertThat(savedUser.getLockedUntil()).isAfter(before);
+        assertThat(savedUser.isAccountLocked()).isTrue();
+    }
+
+    @Test
+    @DisplayName("login: attempt while locked (even with correct password) is rejected with 423 without verifying password")
+    void testLogin_attemptWhileLocked_rejectedWith423WithoutCheckingPassword() {
+        UUID userId = UUID.randomUUID();
+        Instant lockoutUntil = Instant.now().plus(Duration.ofMinutes(10));
+        User lockedUser = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(5)
+                .lockedUntil(lockoutUntil)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(lockedUser));
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(AccountLockedException.class)
+                .hasMessageContaining("Account is temporarily locked")
+                .hasMessageContaining(lockoutUntil.toString());
+
+        // Password matching must NOT be attempted while locked
+        verify(passwordEncoder, never()).matches(any(), any());
+        verify(jwtService, never()).generateToken(any(), any(), any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("login: after lockedUntil passes, correct login succeeds, resets counter and clears lockedUntil")
+    void testLogin_afterLockedUntilPasses_correctLoginSucceedsAndResetsLockout() {
+        UUID userId = UUID.randomUUID();
+        Instant pastLockout = Instant.now().minus(Duration.ofMinutes(1));
+        User previouslyLockedUser = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(5)
+                .lockedUntil(pastLockout)
+                .build();
+        Role role = Role.builder().name("RESIDENT").build();
+        previouslyLockedUser.addRole(role);
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(previouslyLockedUser));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("alice.smith@example.com"), any())).willReturn("mock.jwt.token");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(validLoginRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("mock.jwt.token");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getFailedAttemptCount()).isZero();
+        assertThat(savedUser.getLockedUntil()).isNull();
+    }
+
+    @Test
+    @DisplayName("login: successful login before reaching 5 failures resets counter back to 0")
+    void testLogin_successfulLoginBeforeFiveFailures_resetsCounterToZero() {
+        UUID userId = UUID.randomUUID();
+        User userWithFailedAttempts = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(3)
+                .lockedUntil(null)
+                .build();
+        Role role = Role.builder().name("RESIDENT").build();
+        userWithFailedAttempts.addRole(role);
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(userWithFailedAttempts));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("alice.smith@example.com"), any())).willReturn("mock.jwt.token");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(validLoginRequest);
+
+        assertThat(response).isNotNull();
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getFailedAttemptCount()).isZero();
+        assertThat(savedUser.getLockedUntil()).isNull();
+    }
+
+    @Test
+    @DisplayName("login: unknown-email attempts never touch or reveal lockout state")
+    void testLogin_unknownEmail_neverTouchesOrRevealsLockoutState() {
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        verify(userRepository, never()).save(any());
+        verify(passwordEncoder, never()).matches(any(), any());
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("login: failed attempt under 5 increments counter without locking")
+    void testLogin_failedAttemptUnderFive_incrementsCounterWithoutLocking() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.ACTIVE)
+                .failedAttemptCount(2)
+                .lockedUntil(null)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(false);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(InvalidCredentialsException.class)
+                .hasMessage("Invalid email or password.");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getFailedAttemptCount()).isEqualTo(3);
+        assertThat(savedUser.getLockedUntil()).isNull();
+        assertThat(savedUser.isAccountLocked()).isFalse();
     }
 }
