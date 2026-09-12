@@ -105,4 +105,27 @@ public class AuthController {
         LoginResponse response = authService.login(request);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/logout")
+    @Operation(
+            summary = "Logout user",
+            description = "Logs out the authenticated user. In the current stateless JWT architecture, the client discards the token. Server-side token revocation/blocklisting is out of scope for Sprint 1 and would require Redis or a database-backed denylist if needed in future."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "204",
+                    description = "Logged out successfully (no content)"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - missing or invalid Bearer token",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<Void> logout() {
+        // Token revocation/blocklisting is out of scope for Sprint 1.
+        // In this stateless JWT model, the client clears the token locally.
+        // A distributed blocklist (e.g. Redis or DB-backed denylist) would be implemented if server-side revocation is required in later sprints.
+        return ResponseEntity.noContent().build();
+    }
 }
