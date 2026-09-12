@@ -12,6 +12,11 @@ import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailExcept
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.security.SignatureException;
+import lk.ac.kelaniya.ams.identity_access_service.security.JwtAuthenticationFilter;
+import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
 import lk.ac.kelaniya.ams.identity_access_service.service.AuthService;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +38,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -50,6 +56,9 @@ class AuthControllerTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private JwtService jwtService;
 
     @Test
     @DisplayName("POST /api/v1/auth/register returns 201 with RegisterResponse on valid payload")
@@ -357,5 +366,42 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code", is("ACCOUNT_LOCKED")))
                 .andExpect(jsonPath("$.error.message", containsString("Account is temporarily locked")))
                 .andExpect(jsonPath("$.error.message", containsString(lockoutExpiry.toString())));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout returns 401 when unauthenticated (no Bearer token)")
+    void testLogout_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout returns 204 No Content with valid Bearer token")
+    void testLogout_authenticated_returns204() throws Exception {
+        String validToken = "valid.rs256.jwt.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.getSubject()).willReturn(UUID.randomUUID().toString());
+        given(claims.get("roles", List.class)).willReturn(List.of("RESIDENT"));
+        given(jwtService.parseAndValidateToken(validToken)).willReturn(claimsJws);
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("Authorization", "Bearer " + validToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout returns 401 when Bearer token is invalid")
+    void testLogout_invalidToken_returns401() throws Exception {
+        String invalidToken = "invalid.tampered.token";
+        given(jwtService.parseAndValidateToken(invalidToken))
+                .willThrow(new SignatureException("JWT signature does not match"));
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("Authorization", "Bearer " + invalidToken))
+                .andExpect(status().isUnauthorized());
     }
 }
