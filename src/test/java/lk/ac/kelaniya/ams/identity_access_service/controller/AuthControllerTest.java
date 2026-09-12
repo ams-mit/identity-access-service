@@ -427,4 +427,28 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code", is("EMAIL_ALREADY_EXISTS")))
                 .andExpect(jsonPath("$.error.message", containsString("Email is already registered")));
     }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/register returns 409 CONFLICT with generic message when DataIntegrityViolationException is not email-related")
+    void testRegister_nonEmailDataIntegrityViolation_returnsGenericConflict() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.doe@example.com")
+                .phone("+94771234567")
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        given(authService.register(any(RegisterRequest.class)))
+                .willThrow(new org.springframework.dao.DataIntegrityViolationException("Foreign key constraint violation"));
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("CONFLICT")))
+                .andExpect(jsonPath("$.error.code", not("EMAIL_ALREADY_EXISTS")))
+                .andExpect(jsonPath("$.error.message", is("A data conflict occurred while processing the request.")));
+    }
 }

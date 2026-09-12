@@ -11,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -54,10 +55,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
-        log.warn("Database constraint conflict (duplicate key): {}", ex.getMessage());
+        Throwable rootCause = ex.getMostSpecificCause();
+        String message = (rootCause != null && rootCause.getMessage() != null)
+                ? rootCause.getMessage().toLowerCase(Locale.ROOT)
+                : "";
+
+        log.warn("Database constraint conflict: {}", rootCause != null ? rootCause.getMessage() : ex.getMessage());
+
+        if (message.contains("email")) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(ErrorResponse.of("EMAIL_ALREADY_EXISTS", "Email is already registered. Please login or use a different email."));
+        }
+
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
-                .body(ErrorResponse.of("EMAIL_ALREADY_EXISTS", "Email is already registered. Please login or use a different email."));
+                .body(ErrorResponse.of("CONFLICT", "A data conflict occurred while processing the request."));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)
