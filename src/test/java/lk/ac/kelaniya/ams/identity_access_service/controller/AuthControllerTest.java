@@ -6,6 +6,7 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.request.RegisterRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
@@ -22,6 +23,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -333,5 +336,26 @@ class AuthControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
                 .andExpect(jsonPath("$.error.message", containsString("Password is required")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/login returns 423 when account is locked")
+    void testLogin_accountLocked_returns423() throws Exception {
+        LoginRequest request = LoginRequest.builder()
+                .email("locked@example.com")
+                .password("AnyPassword123")
+                .build();
+
+        Instant lockoutExpiry = Instant.now().plus(Duration.ofMinutes(15));
+        given(authService.login(any(LoginRequest.class)))
+                .willThrow(new AccountLockedException("Account is temporarily locked. Try again after " + lockoutExpiry + ".", lockoutExpiry));
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isLocked())
+                .andExpect(jsonPath("$.error.code", is("ACCOUNT_LOCKED")))
+                .andExpect(jsonPath("$.error.message", containsString("Account is temporarily locked")))
+                .andExpect(jsonPath("$.error.message", containsString(lockoutExpiry.toString())));
     }
 }

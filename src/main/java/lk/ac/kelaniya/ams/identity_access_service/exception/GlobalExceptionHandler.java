@@ -67,6 +67,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of(ex.getErrorCode(), ex.getMessage()));
     }
 
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity<ErrorResponse> handleAccountLockedException(AccountLockedException ex) {
+        log.warn("Account locked access rejected: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.LOCKED)
+                .body(ErrorResponse.of("ACCOUNT_LOCKED", ex.getMessage()));
+    }
+
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMalformedJson(HttpMessageNotReadableException ex) {
         log.warn("Malformed JSON request: {}", ex.getMessage());

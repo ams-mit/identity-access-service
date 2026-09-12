@@ -6,6 +6,7 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
@@ -18,6 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -79,17 +82,22 @@ public class AuthService {
                 .build();
     }
 
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
+
     /**
      * Authenticates user credentials, verifies account lifecycle status, and issues an RS256-signed JWT.
      * Enforces anti-enumeration: user-not-found and wrong password both produce identical generic 401 errors.
-     * Password validation strictly precedes account status checks to prevent disclosing account existence.
+     * Enforces failed-login lockout: 5 consecutive failures locks account for 15 minutes (HTTP 423).
+     * While locked, password verification is bypassed. Successful login clears lockout and resets failed attempts.
      *
      * @param request login credentials payload
      * @return authentication response containing RS256 JWT, expiry in seconds, and user details
      * @throws InvalidCredentialsException if email is not found or password does not match (generic 401)
+     * @throws AccountLockedException      if account is temporarily locked (423)
      * @throws AccountStatusException      if account is PENDING_VERIFICATION, SUSPENDED, or DEACTIVATED (403)
      */
-    @Transactional(readOnly = true)
+    @Transactional(noRollbackFor = InvalidCredentialsException.class)
     public LoginResponse login(LoginRequest request) {
         String email = request.getEmail().trim();
         Optional<User> userOptional = userRepository.findByEmail(email);
@@ -101,13 +109,29 @@ public class AuthService {
 
         User user = userOptional.get();
 
-        // 1. Verify password FIRST before checking account status to prevent email enumeration
+        // 1. Check lockout status BEFORE verifying password to avoid wasted BCrypt computation
+        if (user.isAccountLocked()) {
+            log.warn("Authentication rejected: account locked until {} for user id: {}", user.getLockedUntil(), user.getId());
+            throw new AccountLockedException("Account is temporarily locked. Try again after " + user.getLockedUntil() + ".", user.getLockedUntil());
+        }
+
+        // 2. Verify password FIRST before checking account status to prevent email enumeration
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            log.warn("Authentication failed: invalid password for user id: {}", user.getId());
+            int attempts = user.getFailedAttemptCount() + 1;
+            user.setFailedAttemptCount(attempts);
+            if (attempts >= MAX_FAILED_ATTEMPTS) {
+                user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
+                log.warn("Authentication failed: max attempts reached for user id: {}. Locked until {}",
+                        user.getId(), user.getLockedUntil());
+            } else {
+                log.warn("Authentication failed: invalid password for user id: {}. Attempt {} of {}",
+                        user.getId(), attempts, MAX_FAILED_ATTEMPTS);
+            }
+            userRepository.save(user);
             throw new InvalidCredentialsException("Invalid email or password.");
         }
 
-        // 2. Check account status AFTER confirming credentials are valid
+        // 3. Check account status AFTER confirming credentials are valid
         AccountStatus status = user.getAccountStatus();
         if (status == AccountStatus.PENDING_VERIFICATION) {
             log.warn("Authentication rejected: account pending verification for user id: {}", user.getId());
@@ -123,7 +147,12 @@ public class AuthService {
             throw new AccountStatusException("ACCOUNT_INACTIVE", "Account is not active.");
         }
 
-        // 3. Extract roles (empty list if no roles assigned yet)
+        // 4. Reset lockout and failed attempts on successful authentication
+        user.setFailedAttemptCount(0);
+        user.setLockedUntil(null);
+        userRepository.save(user);
+
+        // 5. Extract roles (empty list if no roles assigned yet)
         List<String> roles = (user.getUserRoles() != null && !user.getUserRoles().isEmpty())
                 ? user.getUserRoles().stream()
                     .map(ur -> ur.getRole() != null ? ur.getRole().getName() : null)
@@ -131,7 +160,7 @@ public class AuthService {
                     .toList()
                 : List.of();
 
-        // 4. Issue RS256 JWT
+        // 6. Issue RS256 JWT
         String token = jwtService.generateToken(user.getId(), user.getEmail(), roles);
         long expiresIn = jwtService.getExpirationSeconds();
 
