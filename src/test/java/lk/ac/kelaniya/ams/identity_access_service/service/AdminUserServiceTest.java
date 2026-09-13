@@ -164,4 +164,292 @@ class AdminUserServiceTest {
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining(missingId.toString());
     }
+
+    // =========================================================================
+    // updateAccountStatus Tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> ACTIVE succeeds without reason and preserves roles")
+    void testUpdateStatus_pendingToActive_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Role role = Role.builder().id(UUID.randomUUID()).name("OWNER").build();
+        User user = User.builder()
+                .id(userId)
+                .email("user@ams.lk")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER")
+                .userRoles(new HashSet<>())
+                .build();
+        user.addRole(role);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .reason(null)
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(result.getRoles()).containsExactly("OWNER");
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> REJECTED succeeds with reason")
+    void testUpdateStatus_pendingToRejected_withReason_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("fraud@ams.lk")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("TENANT_RESIDENT")
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.REJECTED)
+                        .reason("Fraudulent identity documents submitted")
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: ACTIVE -> SUSPENDED succeeds with reason")
+    void testUpdateStatus_activeToSuspended_withReason_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("tenant@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.SUSPENDED)
+                        .reason("Policy violation under investigation")
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: SUSPENDED -> ACTIVE succeeds (reactivation)")
+    void testUpdateStatus_suspendedToActive_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("tenant@ams.lk")
+                .accountStatus(AccountStatus.SUSPENDED)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: ACTIVE -> DEACTIVATED succeeds with reason")
+    void testUpdateStatus_activeToDeactivated_withReason_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("tenant@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.DEACTIVATED)
+                        .reason("Tenancy agreement ended")
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: SUSPENDED -> DEACTIVATED succeeds with reason")
+    void testUpdateStatus_suspendedToDeactivated_withReason_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("tenant@ams.lk")
+                .accountStatus(AccountStatus.SUSPENDED)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.DEACTIVATED)
+                        .reason("Investigation concluded: account permanently closed")
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: missing reason on SUSPENDED throws InvalidStatusTransitionException")
+    void testUpdateStatus_suspended_missingReason_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.ACTIVE).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.SUSPENDED)
+                        .reason("   ")
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Reason is required");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: missing reason on REJECTED throws InvalidStatusTransitionException")
+    void testUpdateStatus_rejected_missingReason_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.PENDING_VERIFICATION).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.REJECTED)
+                        .reason(null)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Reason is required");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: missing reason on DEACTIVATED throws InvalidStatusTransitionException")
+    void testUpdateStatus_deactivated_missingReason_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.ACTIVE).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.DEACTIVATED)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Reason is required");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: invalid transition REJECTED -> ACTIVE throws InvalidStatusTransitionException")
+    void testUpdateStatus_rejectedToActive_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.REJECTED).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Invalid account status transition");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: invalid transition DEACTIVATED -> PENDING_VERIFICATION throws InvalidStatusTransitionException")
+    void testUpdateStatus_deactivatedToPending_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.DEACTIVATED).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.PENDING_VERIFICATION)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Invalid account status transition");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: transition to same status ACTIVE -> ACTIVE throws InvalidStatusTransitionException")
+    void testUpdateStatus_sameStatus_throwsException() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder().id(userId).accountStatus(AccountStatus.ACTIVE).userRoles(new HashSet<>()).build();
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(userId, request, UUID.randomUUID()))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException.class)
+                .hasMessageContaining("Invalid account status transition");
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: nonexistent user throws UserNotFoundException")
+    void testUpdateStatus_userNotFound_throwsException() {
+        UUID missingId = UUID.randomUUID();
+        given(userRepository.findById(missingId)).willReturn(Optional.empty());
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        assertThatThrownBy(() -> adminUserService.updateAccountStatus(missingId, request, UUID.randomUUID()))
+                .isInstanceOf(UserNotFoundException.class);
+    }
 }
