@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -38,13 +39,13 @@ public class AuthService {
     private final JwtService jwtService;
 
     /**
-     * Registers a new user account with PENDING_VERIFICATION status.
-     * Enforces password match, uniqueness of email, and BCrypt hashing.
+     * Registers a new user with PENDING_VERIFICATION status.
+     * Prevents privilege escalation and verifies email uniqueness.
      *
-     * @param request the registration request payload
-     * @return the created user details
+     * @param request registration details
+     * @return registration response with user ID and email
      * @throws PasswordMismatchException if password and confirmPassword do not match
-     * @throws DuplicateEmailException   if email is already in use
+     * @throws DuplicateEmailException   if email is already registered
      */
     @Transactional
     public RegisterResponse register(RegisterRequest request) {
@@ -52,7 +53,7 @@ public class AuthService {
             throw new PasswordMismatchException("Passwords do not match");
         }
 
-        String email = request.getEmail().trim();
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmail(email)) {
             log.warn("Registration rejected: duplicate email address attempt");
             throw new DuplicateEmailException("Email already in use");
@@ -99,7 +100,7 @@ public class AuthService {
      */
     @Transactional(noRollbackFor = InvalidCredentialsException.class)
     public LoginResponse login(LoginRequest request) {
-        String email = request.getEmail().trim();
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
         Optional<User> userOptional = userRepository.findByEmail(email);
 
         if (userOptional.isEmpty()) {

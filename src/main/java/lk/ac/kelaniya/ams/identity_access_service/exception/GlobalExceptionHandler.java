@@ -2,6 +2,7 @@ package lk.ac.kelaniya.ams.identity_access_service.exception;
 
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -49,6 +51,26 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.of("EMAIL_ALREADY_EXISTS", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+        Throwable rootCause = ex.getMostSpecificCause();
+        String message = (rootCause != null && rootCause.getMessage() != null)
+                ? rootCause.getMessage().toLowerCase(Locale.ROOT)
+                : "";
+
+        log.warn("Database constraint conflict: {}", rootCause != null ? rootCause.getMessage() : ex.getMessage());
+
+        if (message.contains("email")) {
+            return ResponseEntity
+                    .status(HttpStatus.CONFLICT)
+                    .body(ErrorResponse.of("EMAIL_ALREADY_EXISTS", "Email is already registered. Please login or use a different email."));
+        }
+
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("CONFLICT", "A data conflict occurred while processing the request."));
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

@@ -10,11 +10,13 @@ import org.springframework.core.io.DefaultResourceLoader;
 
 import java.nio.file.Path;
 import java.security.KeyPair;
+import java.time.Instant;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JwtServiceTest {
 
@@ -91,5 +93,55 @@ class JwtServiceTest {
         assertThat(payload.getSubject()).isEqualTo(userId.toString());
         assertThat(payload.get("email", String.class)).isEqualTo("user@ams.lk");
         assertThat(payload.get("roles", List.class)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("parseAndValidateToken throws ExpiredJwtException when token is expired")
+    void testParseAndValidateToken_expiredToken_throwsExpiredJwtException() {
+        Instant past = Instant.now().minusSeconds(3600);
+        Instant pastExpiry = Instant.now().minusSeconds(1800);
+
+        String expiredToken = io.jsonwebtoken.Jwts.builder()
+                .header()
+                    .keyId(rsaKeyProvider.getKeyId())
+                    .and()
+                .subject(UUID.randomUUID().toString())
+                .claim("email", "expired@ams.lk")
+                .claim("roles", List.of("RESIDENT"))
+                .issuedAt(Date.from(past))
+                .expiration(Date.from(pastExpiry))
+                .signWith(rsaKeyProvider.getPrivateKey(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtService.parseAndValidateToken(expiredToken))
+                .isInstanceOf(io.jsonwebtoken.ExpiredJwtException.class);
+    }
+
+    @Test
+    @DisplayName("parseAndValidateToken throws SignatureException when token is signed with a different key")
+    void testParseAndValidateToken_tokenSignedWithDifferentKey_throwsSignatureException() throws Exception {
+        KeyPair otherKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+
+        String foreignToken = io.jsonwebtoken.Jwts.builder()
+                .header()
+                    .keyId("foreign-key-id")
+                    .and()
+                .subject(UUID.randomUUID().toString())
+                .claim("email", "tampered@ams.lk")
+                .claim("roles", List.of("RESIDENT"))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 1800000))
+                .signWith(otherKeyPair.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtService.parseAndValidateToken(foreignToken))
+                .isInstanceOf(io.jsonwebtoken.security.SignatureException.class);
+    }
+
+    @Test
+    @DisplayName("parseAndValidateToken throws MalformedJwtException when token is not a valid JWT")
+    void testParseAndValidateToken_malformedToken_throwsMalformedJwtException() {
+        assertThatThrownBy(() -> jwtService.parseAndValidateToken("not.a.valid.jwt.payload"))
+                .isInstanceOf(io.jsonwebtoken.MalformedJwtException.class);
     }
 }
