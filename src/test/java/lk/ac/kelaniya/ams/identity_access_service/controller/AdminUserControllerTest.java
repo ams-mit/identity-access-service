@@ -1,0 +1,383 @@
+package lk.ac.kelaniya.ams.identity_access_service.controller;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
+import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.security.SignatureException;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
+import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
+import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
+import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
+import lk.ac.kelaniya.ams.identity_access_service.service.AdminUserService;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(AdminUserController.class)
+@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+class AdminUserControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private AdminUserService adminUserService;
+
+    @MockBean
+    private JwtService jwtService;
+
+    private void mockValidToken(String token, UUID userId, String email, List<String> roles) {
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.getSubject()).willReturn(userId.toString());
+        given(claims.get("email", String.class)).willReturn(email);
+        given(claims.get("roles", List.class)).willReturn(roles);
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+    }
+
+    // =========================================================================
+    // Authentication & Authorization Tests: GET /api/v1/users
+    // =========================================================================
+
+    @Test
+    @DisplayName("GET /api/v1/users returns 401 when unauthenticated (no Bearer token)")
+    void testSearchUsers_unauthenticated_returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/users"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users returns 401 when Bearer token signature is invalid")
+    void testSearchUsers_invalidToken_returns401() throws Exception {
+        String token = "invalid.token.signature";
+        given(jwtService.parseAndValidateToken(token))
+                .willThrow(new SignatureException("JWT signature does not match locally computed signature"));
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users returns 401 when Bearer token is expired")
+    void testSearchUsers_expiredToken_returns401() throws Exception {
+        String token = "expired.jwt.token";
+        given(jwtService.parseAndValidateToken(token))
+                .willThrow(new ExpiredJwtException(null, null, "JWT expired"));
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users returns 403 when authenticated user has no roles")
+    void testSearchUsers_authenticatedNoRoles_returns403() throws Exception {
+        String token = "valid.token.noroles";
+        UUID userId = UUID.randomUUID();
+        mockValidToken(token, userId, "user@example.com", List.of());
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")))
+                .andExpect(jsonPath("$.error.message", is("Access denied: insufficient permissions")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "APARTMENT_MANAGER",
+            "OWNER",
+            "TENANT_RESIDENT",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER"
+    })
+    @DisplayName("GET /api/v1/users returns 403 for all non-admin authenticated roles")
+    void testSearchUsers_authenticatedNonAdminRole_returns403(String role) throws Exception {
+        String token = "valid.token." + role.toLowerCase();
+        UUID userId = UUID.randomUUID();
+        mockValidToken(token, userId, "user." + role.toLowerCase() + "@example.com", List.of(role));
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")))
+                .andExpect(jsonPath("$.error.message", is("Access denied: insufficient permissions")));
+    }
+
+    // =========================================================================
+    // Search, Filtering & Pagination Tests: GET /api/v1/users
+    // =========================================================================
+
+    @Test
+    @DisplayName("GET /api/v1/users returns 200 with paginated user list when authenticated as SYSTEM_ADMINISTRATOR")
+    void testSearchUsers_systemAdministrator_succeeds() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID u1 = UUID.randomUUID();
+        AdminUserSummaryResponse user1 = AdminUserSummaryResponse.builder()
+                .userId(u1)
+                .email("owner1@ams.lk")
+                .fullName("Kamal Perera")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER")
+                .roles(List.of())
+                .build();
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
+        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].userId", is(u1.toString())))
+                .andExpect(jsonPath("$.content[0].email", is("owner1@ams.lk")))
+                .andExpect(jsonPath("$.content[0].fullName", is("Kamal Perera")))
+                .andExpect(jsonPath("$.content[0].accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.content[0].requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.totalElements", is(1)));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users filters by requestedRole for batch review workflow")
+    void testSearchUsers_filterByRequestedRole() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID u1 = UUID.randomUUID();
+        AdminUserSummaryResponse user1 = AdminUserSummaryResponse.builder()
+                .userId(u1)
+                .email("tech1@ams.lk")
+                .fullName("Sunil Silva")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("TECHNICIAN")
+                .roles(List.of())
+                .build();
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
+        given(adminUserService.searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class)))
+                .willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("requestedRole", "TECHNICIAN")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].requestedRole", is("TECHNICIAN")));
+
+        verify(adminUserService).searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users filters by status")
+    void testSearchUsers_filterByStatus() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        Page<AdminUserSummaryResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
+        given(adminUserService.searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class)))
+                .willReturn(emptyPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("status", "SUSPENDED")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(0)))
+                .andExpect(jsonPath("$.totalElements", is(0)));
+
+        verify(adminUserService).searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users combines query, status, and requestedRole filters")
+    void testSearchUsers_combinesAllFilters() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID u1 = UUID.randomUUID();
+        AdminUserSummaryResponse user1 = AdminUserSummaryResponse.builder()
+                .userId(u1)
+                .email("kamal@ams.lk")
+                .fullName("Kamal Silva")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER")
+                .roles(List.of())
+                .build();
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
+        given(adminUserService.searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class)))
+                .willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("query", "kamal")
+                        .param("status", "PENDING_VERIFICATION")
+                        .param("requestedRole", "OWNER")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].email", is("kamal@ams.lk")));
+
+        verify(adminUserService).searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users respects pagination parameters across multiple pages")
+    void testSearchUsers_respectsPaginationParams() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        List<AdminUserSummaryResponse> secondPageUsers = List.of(
+                AdminUserSummaryResponse.builder().userId(UUID.randomUUID()).email("u3@ams.lk").fullName("User 3").accountStatus(AccountStatus.ACTIVE).requestedRole("OWNER").build(),
+                AdminUserSummaryResponse.builder().userId(UUID.randomUUID()).email("u4@ams.lk").fullName("User 4").accountStatus(AccountStatus.ACTIVE).requestedRole("OWNER").build()
+        );
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(secondPageUsers, PageRequest.of(1, 2), 6);
+        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("page", "1")
+                        .param("size", "2")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(2)))
+                .andExpect(jsonPath("$.totalElements", is(6)))
+                .andExpect(jsonPath("$.totalPages", is(3)))
+                .andExpect(jsonPath("$.number", is(1)))
+                .andExpect(jsonPath("$.size", is(2)));
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        verify(adminUserService).searchUsers(any(), any(), any(), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(2);
+    }
+
+    // =========================================================================
+    // User Detail Endpoint Tests: GET /api/v1/users/{userId}
+    // =========================================================================
+
+    @Test
+    @DisplayName("GET /api/v1/users/{userId} returns 401 when unauthenticated")
+    void testGetUserById_unauthenticated_returns401() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        mockMvc.perform(get("/api/v1/users/{userId}", targetId))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/{userId} returns 403 for non-admin role")
+    void testGetUserById_nonAdmin_returns403() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.token.tenant";
+        mockValidToken(token, UUID.randomUUID(), "tenant@example.com", List.of("TENANT_RESIDENT"));
+
+        mockMvc.perform(get("/api/v1/users/{userId}", targetId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/{userId} returns 200 with full record including requestedRole for existing user")
+    void testGetUserById_existingUser_returns200() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, UUID.randomUUID(), "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminUserDetailResponse detail = AdminUserDetailResponse.builder()
+                .userId(targetId)
+                .username("applicant_john")
+                .email("applicant.john@example.com")
+                .fullName("John Applicant")
+                .firstName("John")
+                .lastName("Applicant")
+                .phone("+94712345678")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER")
+                .roles(List.of())
+                .failedAttemptCount(0)
+                .lockedUntil(null)
+                .accountLocked(false)
+                .createdAt(Instant.parse("2026-09-13T08:00:00Z"))
+                .updatedAt(Instant.parse("2026-09-13T08:00:00Z"))
+                .build();
+
+        given(adminUserService.getUserById(targetId)).willReturn(detail);
+
+        mockMvc.perform(get("/api/v1/users/{userId}", targetId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.username", is("applicant_john")))
+                .andExpect(jsonPath("$.email", is("applicant.john@example.com")))
+                .andExpect(jsonPath("$.fullName", is("John Applicant")))
+                .andExpect(jsonPath("$.firstName", is("John")))
+                .andExpect(jsonPath("$.lastName", is("Applicant")))
+                .andExpect(jsonPath("$.phone", is("+94712345678")))
+                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.roles", hasSize(0)))
+                .andExpect(jsonPath("$.grantedRoles", hasSize(0)))
+                .andExpect(jsonPath("$.failedAttemptCount", is(0)))
+                .andExpect(jsonPath("$.accountLocked", is(false)))
+                .andExpect(jsonPath("$.createdAt", is("2026-09-13T08:00:00Z")))
+                .andExpect(jsonPath("$.updatedAt", is("2026-09-13T08:00:00Z")));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/{userId} returns 404 when user does not exist")
+    void testGetUserById_nonExistingUser_returns404() throws Exception {
+        UUID missingId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, UUID.randomUUID(), "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.getUserById(missingId))
+                .willThrow(new UserNotFoundException("User not found with id: " + missingId));
+
+        mockMvc.perform(get("/api/v1/users/{userId}", missingId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")))
+                .andExpect(jsonPath("$.error.message", is("User not found with id: " + missingId)));
+    }
+}
