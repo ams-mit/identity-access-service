@@ -39,4 +39,7 @@ public class UserSummaryResponse {
     @Schema(description = "Assigned user roles", example = "[\"ROLE_STUDENT\"]")
     @Builder.Default
     private List<String> roles = new ArrayList<>();
+
+    @Schema(description = "Advisory role requested during registration for administrative review", example = "OWNER")
+    private String requestedRole;
 }

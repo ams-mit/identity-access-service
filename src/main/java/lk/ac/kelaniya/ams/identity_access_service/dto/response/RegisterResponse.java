@@ -27,4 +27,7 @@ public class RegisterResponse {
 
     @Schema(description = "Initial account verification status", example = "PENDING_VERIFICATION")
     private AccountStatus accountStatus;
+
+    @Schema(description = "Advisory role requested during registration", example = "OWNER")
+    private String requestedRole;
 }
