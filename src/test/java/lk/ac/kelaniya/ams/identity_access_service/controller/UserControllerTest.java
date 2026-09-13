@@ -89,6 +89,7 @@ class UserControllerTest {
                 .lastName("Smith")
                 .accountStatus(AccountStatus.ACTIVE)
                 .roles(List.of("ROLE_MANAGER"))
+                .requestedRole("APARTMENT_MANAGER")
                 .build();
 
         given(userService.getCurrentUser(userId)).willReturn(freshDbUser);
@@ -101,7 +102,8 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.firstName", is("Alice")))
                 .andExpect(jsonPath("$.lastName", is("Smith")))
                 .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
-                .andExpect(jsonPath("$.roles[0]", is("ROLE_MANAGER")));
+                .andExpect(jsonPath("$.roles[0]", is("ROLE_MANAGER")))
+                .andExpect(jsonPath("$.requestedRole", is("APARTMENT_MANAGER")));
     }
 
     @Test

@@ -42,6 +42,7 @@ class UserServiceTest {
                 .firstName("John")
                 .lastName("Doe")
                 .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("OWNER")
                 .build();
         user.addRole(roleResident);
 
@@ -56,6 +57,7 @@ class UserServiceTest {
         assertThat(response.getLastName()).isEqualTo("Doe");
         assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(response.getRoles()).containsExactly("ROLE_RESIDENT");
+        assertThat(response.getRequestedRole()).isEqualTo("OWNER");
     }
 
     @Test
