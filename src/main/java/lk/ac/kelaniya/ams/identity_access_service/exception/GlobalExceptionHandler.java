@@ -113,6 +113,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("FORBIDDEN", "Access denied: insufficient permissions"));
     }
 
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserNotFoundException(UserNotFoundException ex) {
+        log.warn("User not found: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("USER_NOT_FOUND", ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
         log.error("Unhandled internal exception caught: ", ex);
