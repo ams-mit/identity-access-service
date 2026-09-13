@@ -61,6 +61,13 @@ public class User {
     @Column(name = "phone", length = 20)
     private String phone;
 
+    /**
+     * Advisory role requested during registration.
+     * Plain data stored for administrative review; does NOT grant any UserRole or system privileges.
+     */
+    @Column(name = "requested_role", length = 50)
+    private String requestedRole;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
