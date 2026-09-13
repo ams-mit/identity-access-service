@@ -35,7 +35,10 @@ public class AuthController {
     @PostMapping("/register")
     @Operation(
             summary = "Register a new user",
-            description = "Registers a new user account with PENDING_VERIFICATION status. Prevents privilege escalation and verifies email uniqueness."
+            description = "Registers a new user account with PENDING_VERIFICATION status and an advisory requested role "
+                    + "(SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, OWNER, TENANT_RESIDENT, FINANCE_OFFICER, "
+                    + "MAINTENANCE_COORDINATOR, TECHNICIAN, SECURITY_OFFICER). "
+                    + "The requested role is advisory only for administrative review and grants zero permissions or roles upon registration."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -45,7 +48,7 @@ public class AuthController {
             ),
             @ApiResponse(
                     responseCode = "400",
-                    description = "Validation failure or password mismatch",
+                    description = "Validation failure (e.g. invalid requested role, invalid email, weak password) or password mismatch",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
