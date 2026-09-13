@@ -12,7 +12,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Registration request payload.
- * Role or privileged fields are intentionally omitted to prevent client-supplied privilege assignment.
+ * Includes an advisory requestedRole field for administrator review during account approval.
+ * Setting requestedRole does not grant any privileges or roles automatically.
  */
 @Data
 @NoArgsConstructor
@@ -53,4 +54,26 @@ public class RegisterRequest {
     @NotBlank(message = "Password confirmation is required")
     @Schema(description = "Password confirmation matching the password field", example = "P@ssword123")
     private String confirmPassword;
+
+    @NotBlank(message = "Requested role is required")
+    @Pattern(
+            regexp = "^(SYSTEM_ADMINISTRATOR|APARTMENT_MANAGER|OWNER|TENANT_RESIDENT|FINANCE_OFFICER|MAINTENANCE_COORDINATOR|TECHNICIAN|SECURITY_OFFICER)$",
+            message = "Requested role must be one of: SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, OWNER, TENANT_RESIDENT, FINANCE_OFFICER, MAINTENANCE_COORDINATOR, TECHNICIAN, SECURITY_OFFICER"
+    )
+    @Schema(
+            description = "Advisory requested role for account review. Does not grant permissions directly.",
+            example = "OWNER",
+            allowableValues = {
+                    "SYSTEM_ADMINISTRATOR",
+                    "APARTMENT_MANAGER",
+                    "OWNER",
+                    "TENANT_RESIDENT",
+                    "FINANCE_OFFICER",
+                    "MAINTENANCE_COORDINATOR",
+                    "TECHNICIAN",
+                    "SECURITY_OFFICER"
+            },
+            requiredMode = Schema.RequiredMode.REQUIRED
+    )
+    private String requestedRole;
 }

@@ -61,6 +61,8 @@ public class AuthService {
 
         String passwordHash = passwordEncoder.encode(request.getPassword());
 
+        // Advisory only - requestedRole records the applicant's intended role for administrative
+        // review. It does NOT grant any access, system privileges, or UserRole mappings upon registration.
         User user = User.builder()
                 .email(email)
                 .username(email)
@@ -68,6 +70,7 @@ public class AuthService {
                 .firstName(request.getFirstName().trim())
                 .lastName(request.getLastName().trim())
                 .phone(request.getPhone() != null ? request.getPhone().trim() : null)
+                .requestedRole(request.getRequestedRole())
                 .accountStatus(AccountStatus.PENDING_VERIFICATION)
                 .failedAttemptCount(0)
                 .build();
@@ -80,6 +83,7 @@ public class AuthService {
                 .userId(savedUser.getId())
                 .email(savedUser.getEmail())
                 .accountStatus(savedUser.getAccountStatus())
+                .requestedRole(savedUser.getRequestedRole())
                 .build();
     }
 

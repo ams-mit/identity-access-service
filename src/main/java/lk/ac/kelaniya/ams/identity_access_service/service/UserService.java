@@ -55,6 +55,7 @@ public class UserService {
                 .lastName(user.getLastName())
                 .accountStatus(user.getAccountStatus())
                 .roles(roles)
+                .requestedRole(user.getRequestedRole())
                 .build();
     }
 }

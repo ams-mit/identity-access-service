@@ -21,6 +21,8 @@ import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
 import lk.ac.kelaniya.ams.identity_access_service.service.AuthService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -68,6 +70,7 @@ class AuthControllerTest {
                 .lastName("Doe")
                 .email("jane.doe@example.com")
                 .phone("+94771234567")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
@@ -77,6 +80,7 @@ class AuthControllerTest {
                 .userId(generatedId)
                 .email("jane.doe@example.com")
                 .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER")
                 .build();
 
         given(authService.register(any(RegisterRequest.class))).willReturn(expectedResponse);
@@ -88,7 +92,102 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.userId", is(generatedId.toString())))
                 .andExpect(jsonPath("$.email", is("jane.doe@example.com")))
                 .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.requestedRole", is("OWNER")))
                 .andExpect(content().string(not(containsString("SecurePass1"))));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "OWNER",
+            "TENANT_RESIDENT",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER"
+    })
+    @DisplayName("POST /api/v1/auth/register returns 201 for each of the 8 valid requested roles")
+    void testRegister_allValidRequestedRoles_returns201(String role) throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.role." + role.toLowerCase() + "@example.com")
+                .phone("+94771234567")
+                .requestedRole(role)
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        UUID generatedId = UUID.randomUUID();
+        RegisterResponse expectedResponse = RegisterResponse.builder()
+                .userId(generatedId)
+                .email(request.getEmail())
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole(role)
+                .build();
+
+        given(authService.register(any(RegisterRequest.class))).willReturn(expectedResponse);
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId", is(generatedId.toString())))
+                .andExpect(jsonPath("$.email", is(request.getEmail())))
+                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.requestedRole", is(role)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "INVALID_ROLE",
+            "SYSTEM_ADMIN",
+            "ADMINISTRATOR",
+            "SUPER_ADMIN",
+            "resident",
+            "owner",
+            "MANAGER",
+            "TENANT"
+    })
+    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is invalid or unrecognized")
+    void testRegister_invalidRequestedRole_returns400(String invalidRole) throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.doe@example.com")
+                .phone("+94771234567")
+                .requestedRole(invalidRole)
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Requested role must be one of")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is missing/blank")
+    void testRegister_missingRequestedRole_returns400() throws Exception {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.doe@example.com")
+                .phone("+94771234567")
+                .password("SecurePass1")
+                .confirmPassword("SecurePass1")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Requested role is required")));
     }
 
     @Test
@@ -98,6 +197,7 @@ class AuthControllerTest {
                 .firstName("Jane")
                 .lastName("Doe")
                 .email("jane.doe@example.com")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("DifferentPass2")
                 .build();
@@ -122,6 +222,7 @@ class AuthControllerTest {
                 .firstName("Jane")
                 .lastName("Doe")
                 .email("existing@example.com")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
@@ -144,6 +245,7 @@ class AuthControllerTest {
                 .firstName("Jane")
                 .lastName("Doe")
                 .email("invalid-email-format")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
@@ -163,6 +265,7 @@ class AuthControllerTest {
                 .firstName("Jane")
                 .lastName("Doe")
                 .email("jane.doe@example.com")
+                .requestedRole("OWNER")
                 .password("Pass1")
                 .confirmPassword("Pass1")
                 .build();
@@ -181,6 +284,7 @@ class AuthControllerTest {
                 .firstName("Jane")
                 .lastName("Doe")
                 .email("jane.doe@example.com")
+                .requestedRole("OWNER")
                 .password("PasswordNoDigits")
                 .confirmPassword("PasswordNoDigits")
                 .build();
@@ -413,6 +517,7 @@ class AuthControllerTest {
                 .lastName("Doe")
                 .email("jane.doe@example.com")
                 .phone("+94771234567")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
@@ -436,6 +541,7 @@ class AuthControllerTest {
                 .lastName("Doe")
                 .email("jane.doe@example.com")
                 .phone("+94771234567")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();

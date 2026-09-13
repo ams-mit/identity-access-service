@@ -17,6 +17,8 @@ import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -63,6 +65,7 @@ class AuthServiceTest {
                 .lastName("Smith")
                 .email("alice.smith@example.com")
                 .phone("+94712345678")
+                .requestedRole("OWNER")
                 .password("StrongPassword1")
                 .confirmPassword("StrongPassword1")
                 .build();
@@ -93,6 +96,7 @@ class AuthServiceTest {
         assertThat(response.getUserId()).isEqualTo(expectedId);
         assertThat(response.getEmail()).isEqualTo("alice.smith@example.com");
         assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+        assertThat(response.getRequestedRole()).isEqualTo("OWNER");
 
         ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(userCaptor.capture());
@@ -101,7 +105,63 @@ class AuthServiceTest {
         assertThat(savedUser.getPasswordHash()).isEqualTo(hashedPassword);
         assertThat(savedUser.getPasswordHash()).isNotEqualTo("StrongPassword1");
         assertThat(savedUser.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+        assertThat(savedUser.getRequestedRole()).isEqualTo("OWNER");
         assertThat(savedUser.getFailedAttemptCount()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "OWNER",
+            "TENANT_RESIDENT",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER"
+    })
+    @DisplayName("register: each valid requested role persists correctly and grants ZERO roles (critical security regression test)")
+    void testRegister_eachValidRole_persistsRequestedRole_andGrantsZeroRoles(String roleName) {
+        RegisterRequest request = RegisterRequest.builder()
+                .firstName("Bob")
+                .lastName("Builder")
+                .email("bob." + roleName.toLowerCase() + "@example.com")
+                .phone("+94711112222")
+                .requestedRole(roleName)
+                .password("StrongPassword1")
+                .confirmPassword("StrongPassword1")
+                .build();
+
+        UUID expectedId = UUID.randomUUID();
+        given(userRepository.existsByEmail(request.getEmail())).willReturn(false);
+        given(passwordEncoder.encode("StrongPassword1")).willReturn("hashed-password");
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> {
+            User user = invocation.getArgument(0);
+            user.setId(expectedId);
+            return user;
+        });
+
+        RegisterResponse response = authService.register(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUserId()).isEqualTo(expectedId);
+        assertThat(response.getEmail()).isEqualTo(request.getEmail());
+        assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+        assertThat(response.getRequestedRole()).isEqualTo(roleName);
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        // 1. Verify advisory requested role is persisted as plain data
+        assertThat(savedUser.getRequestedRole()).isEqualTo(roleName);
+
+        // 2. CRITICAL SECURITY REGRESSION TEST:
+        // Confirm no UserRole/Role grant is created as a side effect of registration regardless of which role was requested.
+        // Assert user has zero roles immediately after registration.
+        assertThat(savedUser.getUserRoles()).isNotNull();
+        assertThat(savedUser.getUserRoles()).isEmpty();
+        assertThat(savedUser.getUserRoles()).hasSize(0);
     }
 
     @Test
@@ -482,6 +542,7 @@ class AuthServiceTest {
                 .lastName(" Smith ")
                 .email("  ALICE.SMITH@EXAMPLE.COM  ")
                 .phone(" +94771234567 ")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
@@ -507,6 +568,7 @@ class AuthServiceTest {
         assertThat(savedUser.getFirstName()).isEqualTo("Alice");
         assertThat(savedUser.getLastName()).isEqualTo("Smith");
         assertThat(savedUser.getPhone()).isEqualTo("+94771234567");
+        assertThat(savedUser.getRequestedRole()).isEqualTo("OWNER");
     }
 
     @Test
@@ -517,6 +579,7 @@ class AuthServiceTest {
                 .lastName("Smith")
                 .email("ALICE.SMITH@EXAMPLE.COM")
                 .phone("+94771234567")
+                .requestedRole("OWNER")
                 .password("SecurePass1")
                 .confirmPassword("SecurePass1")
                 .build();
