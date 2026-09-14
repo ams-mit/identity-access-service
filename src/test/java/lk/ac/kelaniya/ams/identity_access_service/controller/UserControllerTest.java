@@ -1,13 +1,17 @@
 package lk.ac.kelaniya.ams.identity_access_service.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.security.SignatureException;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ChangePasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.UserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.SamePasswordException;
 import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
 import lk.ac.kelaniya.ams.identity_access_service.service.UserService;
@@ -17,15 +21,21 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +45,9 @@ class UserControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @MockBean
     private UserService userService;
@@ -167,5 +180,200 @@ class UserControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code", is("ACCOUNT_DEACTIVATED")))
                 .andExpect(jsonPath("$.error.message", is("Account has been deactivated. Please contact support.")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 204 No Content on successful password change")
+    void testChangePassword_success_returns204NoContent() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("NewP@ssword456")
+                .build();
+
+        doNothing().when(userService).changePassword(eq(userId), any(ChangePasswordRequest.class));
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 401 when unauthenticated")
+    void testChangePassword_unauthenticated_returns401() throws Exception {
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("NewP@ssword456")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 401 when Bearer token is invalid")
+    void testChangePassword_invalidToken_returns401() throws Exception {
+        String invalidToken = "invalid.token";
+        given(jwtService.parseAndValidateToken(invalidToken))
+                .willThrow(new SignatureException("Invalid JWT signature"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("NewP@ssword456")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + invalidToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 401 when current password is incorrect")
+    void testChangePassword_wrongCurrentPassword_returns401() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("WrongPassword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("NewP@ssword456")
+                .build();
+
+        doThrow(new InvalidCredentialsException("Current password is incorrect."))
+                .when(userService).changePassword(eq(userId), any(ChangePasswordRequest.class));
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("INVALID_CREDENTIALS")))
+                .andExpect(jsonPath("$.error.message", is("Current password is incorrect.")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 400 when new password and confirmation do not match")
+    void testChangePassword_mismatchedNewConfirmPassword_returns400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("MismatchedPass789")
+                .build();
+
+        doThrow(new PasswordMismatchException("New password and confirm password do not match"))
+                .when(userService).changePassword(eq(userId), any(ChangePasswordRequest.class));
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("PASSWORD_MISMATCH")))
+                .andExpect(jsonPath("$.error.message", is("New password and confirm password do not match")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 400 when new password is same as current password")
+    void testChangePassword_newPasswordSameAsCurrent_returns400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("OldP@ssword123")
+                .confirmNewPassword("OldP@ssword123")
+                .build();
+
+        doThrow(new SamePasswordException("New password must differ from current password"))
+                .when(userService).changePassword(eq(userId), any(ChangePasswordRequest.class));
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("SAME_PASSWORD")))
+                .andExpect(jsonPath("$.error.message", is("New password must differ from current password")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 400 when new password fails policy (too short)")
+    void testChangePassword_newPasswordTooShort_returns400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("Short1")
+                .confirmNewPassword("Short1")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 400 when new password fails policy (no digit)")
+    void testChangePassword_newPasswordNoDigit_returns400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NoDigitsInThisPassword")
+                .confirmNewPassword("NoDigitsInThisPassword")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password returns 400 when current password is blank")
+    void testChangePassword_currentPasswordBlank_returns400() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validToken = "valid.change.password.token";
+        mockValidToken(validToken, userId, "user@example.com", List.of("ROLE_RESIDENT"));
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("")
+                .newPassword("ValidNewP@ssword123")
+                .confirmNewPassword("ValidNewP@ssword123")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + validToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
     }
 }
