@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashSet;
 import java.util.Optional;
@@ -36,6 +37,9 @@ class RoleAssignmentReportingTest {
     @Mock
     private RoleRepository roleRepository;
 
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
     private AdminUserService adminUserService;
     private UserService userService;
 
@@ -48,7 +52,7 @@ class RoleAssignmentReportingTest {
 
     @BeforeEach
     void setUp() {
-        adminUserService = new AdminUserService(userRepository, roleRepository);
+        adminUserService = new AdminUserService(userRepository, roleRepository, passwordEncoder);
         userService = new UserService(userRepository);
 
         userId = UUID.randomUUID();
