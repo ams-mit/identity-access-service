@@ -4,9 +4,15 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatu
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleNotAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.SelfRoleAssignmentException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
+import lk.ac.kelaniya.ams.identity_access_service.repository.RoleRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.specification.UserSpecifications;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +38,18 @@ import java.util.UUID;
 public class AdminUserService {
 
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+
+    public static final Set<String> VALID_ROLES = Set.of(
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "OWNER",
+            "TENANT_RESIDENT",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER"
+    );
 
     /**
      * Search and paginate users with optional filtering on free-text query, account status,
@@ -141,6 +159,106 @@ public class AdminUserService {
                 user.getId(), currentStatus, targetStatus, adminId, reason);
 
         user.setAccountStatus(targetStatus);
+        User savedUser = userRepository.save(user);
+
+        return toDetailResponse(savedUser);
+    }
+
+    /**
+     * Assigns a staff or system role to a user.
+     * A user may hold multiple roles simultaneously.
+     * The assigned role is not constrained to match requestedRole.
+     * Self-assignment by an administrator is strictly prohibited.
+     * Account status is not touched by this operation.
+     *
+     * @param userId   unique user identifier
+     * @param roleName role to assign (must be one of the 8 valid AMS roles)
+     * @param adminId  identifier of authenticated administrator performing the assignment
+     * @return updated user details
+     * @throws InvalidRoleException         if roleName is not one of the 8 valid AMS roles or role entity is missing
+     * @throws SelfRoleAssignmentException  if administrator attempts to assign a role to their own account
+     * @throws UserNotFoundException        if target user does not exist
+     * @throws RoleAlreadyAssignedException if user already holds the specified role
+     */
+    @Transactional
+    public AdminUserDetailResponse assignRole(UUID userId, String roleName, UUID adminId) {
+        if (roleName == null || !VALID_ROLES.contains(roleName.trim())) {
+            log.warn("Role assignment rejected for user id {}: invalid role name '{}'", userId, roleName);
+            throw new InvalidRoleException(
+                    "Invalid role: '" + roleName + "'. Valid roles are: " + String.join(", ", VALID_ROLES)
+            );
+        }
+        String normalizedRole = roleName.trim();
+
+        if (adminId != null && adminId.equals(userId)) {
+            log.warn("Self-assignment attempt blocked: admin id {} attempted to assign role '{}' to own account", adminId, normalizedRole);
+            throw new SelfRoleAssignmentException("Administrators cannot assign roles to their own account.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+
+        boolean alreadyHasRole = user.getUserRoles() != null && user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole() != null && normalizedRole.equalsIgnoreCase(ur.getRole().getName()));
+        if (alreadyHasRole) {
+            log.warn("Role assignment conflict for user id {}: user already holds role '{}'", userId, normalizedRole);
+            throw new RoleAlreadyAssignedException("User already holds the role: " + normalizedRole);
+        }
+
+        Role role = roleRepository.findByName(normalizedRole)
+                .orElseThrow(() -> new InvalidRoleException("Role not found: " + normalizedRole));
+
+        user.addRole(role);
+        log.info("AUDIT: Role '{}' assigned to user id: {} by admin id: {}", normalizedRole, userId, adminId);
+        User savedUser = userRepository.save(user);
+
+        return toDetailResponse(savedUser);
+    }
+
+    /**
+     * Removes a specific granted role from a user.
+     * Self-removal by an administrator is strictly prohibited.
+     * Account status is not touched by this operation.
+     *
+     * @param userId   unique user identifier
+     * @param roleName role to remove (must be one of the 8 valid AMS roles)
+     * @param adminId  identifier of authenticated administrator performing the removal
+     * @return updated user details
+     * @throws InvalidRoleException        if roleName is not one of the 8 valid AMS roles or role entity is missing
+     * @throws SelfRoleAssignmentException if administrator attempts to remove a role from their own account
+     * @throws UserNotFoundException       if target user does not exist
+     * @throws RoleNotAssignedException    if user does not hold the specified role
+     */
+    @Transactional
+    public AdminUserDetailResponse removeRole(UUID userId, String roleName, UUID adminId) {
+        if (roleName == null || !VALID_ROLES.contains(roleName.trim())) {
+            log.warn("Role removal rejected for user id {}: invalid role name '{}'", userId, roleName);
+            throw new InvalidRoleException(
+                    "Invalid role: '" + roleName + "'. Valid roles are: " + String.join(", ", VALID_ROLES)
+            );
+        }
+        String normalizedRole = roleName.trim();
+
+        if (adminId != null && adminId.equals(userId)) {
+            log.warn("Self-removal attempt blocked: admin id {} attempted to remove role '{}' from own account", adminId, normalizedRole);
+            throw new SelfRoleAssignmentException("Administrators cannot remove roles from their own account.");
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+
+        boolean hasRole = user.getUserRoles() != null && user.getUserRoles().stream()
+                .anyMatch(ur -> ur.getRole() != null && normalizedRole.equalsIgnoreCase(ur.getRole().getName()));
+        if (!hasRole) {
+            log.warn("Role removal conflict for user id {}: user does not hold role '{}'", userId, normalizedRole);
+            throw new RoleNotAssignedException("User does not hold the role: " + normalizedRole);
+        }
+
+        Role role = roleRepository.findByName(normalizedRole)
+                .orElseThrow(() -> new InvalidRoleException("Role not found: " + normalizedRole));
+
+        user.removeRole(role);
+        log.info("AUDIT: Role '{}' removed from user id: {} by admin id: {}", normalizedRole, userId, adminId);
         User savedUser = userRepository.save(user);
 
         return toDetailResponse(savedUser);
