@@ -93,12 +93,20 @@ public class User {
     private Set<UserRole> userRoles = new HashSet<>();
 
     public void addRole(Role role) {
+        if (this.userRoles == null) {
+            this.userRoles = new HashSet<>();
+        }
         UserRole userRole = new UserRole(this, role);
         this.userRoles.add(userRole);
     }
 
     public void removeRole(Role role) {
-        this.userRoles.removeIf(ur -> ur.getRole().equals(role));
+        if (this.userRoles == null || role == null) {
+            return;
+        }
+        this.userRoles.removeIf(ur -> ur.getRole() != null &&
+                (ur.getRole().equals(role) ||
+                 (ur.getRole().getName() != null && role.getName() != null && ur.getRole().getName().equalsIgnoreCase(role.getName()))));
     }
 
     public boolean isAccountLocked() {
