@@ -111,16 +111,10 @@ class AuthServiceTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "SYSTEM_ADMINISTRATOR",
-            "APARTMENT_MANAGER",
             "OWNER",
-            "TENANT_RESIDENT",
-            "FINANCE_OFFICER",
-            "MAINTENANCE_COORDINATOR",
-            "TECHNICIAN",
-            "SECURITY_OFFICER"
+            "TENANT_RESIDENT"
     })
-    @DisplayName("register: each valid requested role persists correctly and grants ZERO roles (critical security regression test)")
+    @DisplayName("register: each valid resident-facing requested role (OWNER, TENANT_RESIDENT) persists correctly and grants ZERO roles")
     void testRegister_eachValidRole_persistsRequestedRole_andGrantsZeroRoles(String roleName) {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Bob")

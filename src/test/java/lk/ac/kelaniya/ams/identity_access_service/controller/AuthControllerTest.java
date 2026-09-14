@@ -98,16 +98,10 @@ class AuthControllerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "SYSTEM_ADMINISTRATOR",
-            "APARTMENT_MANAGER",
             "OWNER",
-            "TENANT_RESIDENT",
-            "FINANCE_OFFICER",
-            "MAINTENANCE_COORDINATOR",
-            "TECHNICIAN",
-            "SECURITY_OFFICER"
+            "TENANT_RESIDENT"
     })
-    @DisplayName("POST /api/v1/auth/register returns 201 for each of the 8 valid requested roles")
+    @DisplayName("POST /api/v1/auth/register returns 201 for valid resident-facing requested roles (OWNER, TENANT_RESIDENT)")
     void testRegister_allValidRequestedRoles_returns201(String role) throws Exception {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Jane")
@@ -141,6 +135,12 @@ class AuthControllerTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER",
             "INVALID_ROLE",
             "SYSTEM_ADMIN",
             "ADMINISTRATOR",
@@ -150,7 +150,7 @@ class AuthControllerTest {
             "MANAGER",
             "TENANT"
     })
-    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is invalid or unrecognized")
+    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is invalid or disallowed (including staff/admin roles)")
     void testRegister_invalidRequestedRole_returns400(String invalidRole) throws Exception {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Jane")
