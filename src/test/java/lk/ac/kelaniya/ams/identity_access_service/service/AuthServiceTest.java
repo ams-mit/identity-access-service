@@ -644,4 +644,40 @@ class AuthServiceTest {
         assertThat(response.getAccessToken()).isEqualTo("mock.jwt.token");
         assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
     }
+
+    @Test
+    @DisplayName("login: admin-created ACTIVE account logs in immediately with mustChangePassword=true and zero roles")
+    void testLogin_adminCreatedAccount_immediatelyLogsInWithMustChangePasswordTrueAndNoRoles() {
+        UUID userId = UUID.randomUUID();
+        User adminCreatedUser = User.builder()
+                .id(userId)
+                .email("created.by.admin@ams.lk")
+                .passwordHash("$2a$10$temporaryBCryptHash")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .requestedRole(null)
+                .failedAttemptCount(0)
+                .build();
+
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("created.by.admin@ams.lk")
+                .password("TempSecret123")
+                .build();
+
+        given(userRepository.findByEmail("created.by.admin@ams.lk")).willReturn(Optional.of(adminCreatedUser));
+        given(passwordEncoder.matches("TempSecret123", "$2a$10$temporaryBCryptHash")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("created.by.admin@ams.lk"), eq(List.of()))).willReturn("jwt.admin.created.user");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(loginRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("jwt.admin.created.user");
+        assertThat(response.isMustChangePassword()).isTrue();
+        assertThat(response.getUser()).isNotNull();
+        assertThat(response.getUser().getUserId()).isEqualTo(userId);
+        assertThat(response.getUser().getEmail()).isEqualTo("created.by.admin@ams.lk");
+        assertThat(response.getUser().isMustChangePassword()).isTrue();
+        assertThat(response.getUser().getRoles()).isEmpty();
+    }
 }

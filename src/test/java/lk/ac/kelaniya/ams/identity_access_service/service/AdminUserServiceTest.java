@@ -1,11 +1,14 @@
 package lk.ac.kelaniya.ams.identity_access_service.service;
 
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.AdminCreateUserRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
 import lk.ac.kelaniya.ams.identity_access_service.entity.UserRole;
+import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.RoleNotAssignedException;
@@ -39,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -759,5 +763,72 @@ class AdminUserServiceTest {
 
         assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("createUser: hashes temporary password, sets ACTIVE status and mustChangePassword=true, requestedRole=null, zero roles")
+    void testCreateUser_success() {
+        UUID expectedId = UUID.randomUUID();
+        AdminCreateUserRequest request = AdminCreateUserRequest.builder()
+                .firstName("  Jane  ")
+                .lastName("  Doe  ")
+                .email("  Jane.Doe@AMS.lk  ")
+                .phone("  +94771234567  ")
+                .temporaryPassword("TempSecret123")
+                .build();
+
+        given(userRepository.existsByEmail("jane.doe@ams.lk")).willReturn(false);
+        given(passwordEncoder.encode("TempSecret123")).willReturn("$2a$10$hashedBCryptPassword");
+        given(userRepository.save(any(User.class))).willAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(expectedId);
+            return u;
+        });
+
+        AdminCreateUserResponse response = adminUserService.createUser(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUserId()).isEqualTo(expectedId);
+        assertThat(response.getEmail()).isEqualTo("jane.doe@ams.lk");
+        assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(response.isMustChangePassword()).isTrue();
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+
+        assertThat(savedUser.getId()).isEqualTo(expectedId);
+        assertThat(savedUser.getEmail()).isEqualTo("jane.doe@ams.lk");
+        assertThat(savedUser.getUsername()).isEqualTo("jane.doe@ams.lk");
+        assertThat(savedUser.getFirstName()).isEqualTo("Jane");
+        assertThat(savedUser.getLastName()).isEqualTo("Doe");
+        assertThat(savedUser.getPhone()).isEqualTo("+94771234567");
+        assertThat(savedUser.getPasswordHash()).isEqualTo("$2a$10$hashedBCryptPassword");
+        assertThat(savedUser.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(savedUser.isMustChangePassword()).isTrue();
+        assertThat(savedUser.getRequestedRole()).isNull();
+        assertThat(savedUser.getFailedAttemptCount()).isZero();
+        assertThat(savedUser.getUserRoles()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("createUser: throws DuplicateEmailException when email is already in use")
+    void testCreateUser_duplicateEmail_throwsDuplicateEmailException() {
+        AdminCreateUserRequest request = AdminCreateUserRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("duplicate@ams.lk")
+                .phone("+94771234567")
+                .temporaryPassword("TempSecret123")
+                .build();
+
+        given(userRepository.existsByEmail("duplicate@ams.lk")).willReturn(true);
+
+        assertThatThrownBy(() -> adminUserService.createUser(request))
+                .isInstanceOf(DuplicateEmailException.class)
+                .hasMessage("Email already in use");
+
+        verify(passwordEncoder, never()).encode(any());
+        verify(userRepository, never()).save(any());
     }
 }
