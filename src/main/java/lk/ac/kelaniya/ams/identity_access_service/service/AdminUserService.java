@@ -1,9 +1,11 @@
 package lk.ac.kelaniya.ams.identity_access_service.service;
 
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.specification.UserSpecifications;
@@ -16,7 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -70,6 +74,76 @@ public class AdminUserService {
                 .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
 
         return toDetailResponse(user);
+    }
+
+    private static final Map<AccountStatus, Set<AccountStatus>> ALLOWED_TRANSITIONS = Map.of(
+            AccountStatus.PENDING_VERIFICATION, Set.of(AccountStatus.ACTIVE, AccountStatus.REJECTED),
+            AccountStatus.ACTIVE, Set.of(AccountStatus.SUSPENDED, AccountStatus.DEACTIVATED),
+            AccountStatus.SUSPENDED, Set.of(AccountStatus.ACTIVE, AccountStatus.DEACTIVATED)
+    );
+
+    /**
+     * Transition a user's account lifecycle status according to the finite state machine.
+     * Valid transitions:
+     * - PENDING_VERIFICATION -> ACTIVE (activate/approve)
+     * - PENDING_VERIFICATION -> REJECTED (reason required)
+     * - ACTIVE -> SUSPENDED (reason required)
+     * - SUSPENDED -> ACTIVE (reactivate)
+     * - ACTIVE -> DEACTIVATED (reason required)
+     * - SUSPENDED -> DEACTIVATED (reason required)
+     *
+     * @param userId  unique identifier of target user
+     * @param request status update payload containing target status and optional/required reason
+     * @param adminId authenticated administrator performing the transition
+     * @return updated user details
+     * @throws UserNotFoundException            if target user does not exist
+     * @throws InvalidStatusTransitionException if transition is disallowed or required reason is missing
+     */
+    @Transactional
+    public AdminUserDetailResponse updateAccountStatus(
+            UUID userId,
+            UpdateAccountStatusRequest request,
+            UUID adminId
+    ) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found with id: " + userId));
+
+        AccountStatus currentStatus = user.getAccountStatus();
+        AccountStatus targetStatus = request.getStatus();
+
+        Set<AccountStatus> allowedTargets = ALLOWED_TRANSITIONS.getOrDefault(currentStatus, Set.of());
+        if (targetStatus == null || !allowedTargets.contains(targetStatus)) {
+            log.warn("Invalid account status transition attempt for user id {}: {} -> {}", userId, currentStatus, targetStatus);
+            throw new InvalidStatusTransitionException(
+                    String.format(
+                            "Invalid account status transition from %s to %s. Allowed transitions: "
+                                    + "PENDING_VERIFICATION -> [ACTIVE, REJECTED], "
+                                    + "ACTIVE -> [SUSPENDED, DEACTIVATED], "
+                                    + "SUSPENDED -> [ACTIVE, DEACTIVATED].",
+                            currentStatus, targetStatus
+                    )
+            );
+        }
+
+        String reason = request.getReason() != null ? request.getReason().trim() : "";
+        boolean reasonRequired = (targetStatus == AccountStatus.SUSPENDED
+                || targetStatus == AccountStatus.DEACTIVATED
+                || targetStatus == AccountStatus.REJECTED);
+
+        if (reasonRequired && reason.isEmpty()) {
+            log.warn("Status transition to {} rejected for user id {}: missing required reason", targetStatus, userId);
+            throw new InvalidStatusTransitionException(
+                    "Reason is required when transitioning account status to " + targetStatus + "."
+            );
+        }
+
+        log.info("AUDIT: Account status transition for user id: {} from {} to {} by admin id: {}. Reason: '{}'",
+                user.getId(), currentStatus, targetStatus, adminId, reason);
+
+        user.setAccountStatus(targetStatus);
+        User savedUser = userRepository.save(user);
+
+        return toDetailResponse(savedUser);
     }
 
     private AdminUserSummaryResponse toSummaryResponse(User user) {

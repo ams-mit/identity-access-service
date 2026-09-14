@@ -147,6 +147,9 @@ public class AuthService {
         } else if (status == AccountStatus.DEACTIVATED) {
             log.warn("Authentication rejected: account deactivated for user id: {}", user.getId());
             throw new AccountStatusException("ACCOUNT_DEACTIVATED", "Account has been deactivated. Please contact support.");
+        } else if (status == AccountStatus.REJECTED) {
+            log.warn("Authentication rejected: account rejected for user id: {}", user.getId());
+            throw new AccountStatusException("ACCOUNT_REJECTED", "Account registration has been rejected. Please contact support.");
         } else if (status != AccountStatus.ACTIVE) {
             log.warn("Authentication rejected: non-active account status {} for user id: {}", status, user.getId());
             throw new AccountStatusException("ACCOUNT_INACTIVE", "Account is not active.");

@@ -121,6 +121,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("USER_NOT_FOUND", ex.getMessage()));
     }
 
+    @ExceptionHandler(InvalidStatusTransitionException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidStatusTransitionException(InvalidStatusTransitionException ex) {
+        log.warn("Invalid account status transition: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_STATUS_TRANSITION", ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
         log.error("Unhandled internal exception caught: ", ex);

@@ -25,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
@@ -40,6 +41,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -379,5 +381,168 @@ class AdminUserControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")))
                 .andExpect(jsonPath("$.error.message", is("User not found with id: " + missingId)));
+    }
+
+    // =========================================================================
+    // Account Status Transition Tests: PATCH /api/v1/users/{userId}/status
+    // =========================================================================
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 401 when unauthenticated")
+    void testUpdateAccountStatus_unauthenticated_returns401() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String json = "{\"status\":\"ACTIVE\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 403 for non-admin roles")
+    void testUpdateAccountStatus_nonAdmin_returns403() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.token.manager";
+        mockValidToken(token, UUID.randomUUID(), "manager@ams.lk", List.of("APARTMENT_MANAGER"));
+        String json = "{\"status\":\"ACTIVE\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 404 when target user does not exist")
+    void testUpdateAccountStatus_userNotFound_returns404() throws Exception {
+        UUID missingId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.updateAccountStatus(eq(missingId), any(), any()))
+                .willThrow(new UserNotFoundException("User not found with id: " + missingId));
+
+        String json = "{\"status\":\"ACTIVE\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", missingId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 400 when transition is invalid")
+    void testUpdateAccountStatus_invalidTransition_returns400() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.updateAccountStatus(eq(targetId), any(), any()))
+                .willThrow(new lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException(
+                        "Invalid account status transition from REJECTED to ACTIVE."
+                ));
+
+        String json = "{\"status\":\"ACTIVE\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_STATUS_TRANSITION")))
+                .andExpect(jsonPath("$.error.message", is("Invalid account status transition from REJECTED to ACTIVE.")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 400 when reason is missing for SUSPENDED")
+    void testUpdateAccountStatus_missingReason_returns400() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.updateAccountStatus(eq(targetId), any(), any()))
+                .willThrow(new lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException(
+                        "Reason is required when transitioning account status to SUSPENDED."
+                ));
+
+        String json = "{\"status\":\"SUSPENDED\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_STATUS_TRANSITION")))
+                .andExpect(jsonPath("$.error.message", is("Reason is required when transitioning account status to SUSPENDED.")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 200 for valid transition to ACTIVE without reason")
+    void testUpdateAccountStatus_pendingToActive_succeedsWithoutReason() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminUserDetailResponse detail = AdminUserDetailResponse.builder()
+                .userId(targetId)
+                .email("user@ams.lk")
+                .fullName("John Doe")
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("OWNER")
+                .roles(List.of())
+                .build();
+
+        given(adminUserService.updateAccountStatus(eq(targetId), any(), any())).willReturn(detail);
+
+        String json = "{\"status\":\"ACTIVE\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.requestedRole", is("OWNER")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}/status returns 200 for valid transition to REJECTED with reason")
+    void testUpdateAccountStatus_pendingToRejected_succeedsWithReason() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminUserDetailResponse detail = AdminUserDetailResponse.builder()
+                .userId(targetId)
+                .email("fraud@ams.lk")
+                .fullName("Fraud User")
+                .accountStatus(AccountStatus.REJECTED)
+                .requestedRole("TENANT_RESIDENT")
+                .roles(List.of())
+                .build();
+
+        given(adminUserService.updateAccountStatus(eq(targetId), any(), any())).willReturn(detail);
+
+        String json = "{\"status\":\"REJECTED\",\"reason\":\"Forged lease documents\"}";
+
+        mockMvc.perform(patch("/api/v1/users/{userId}/status", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.accountStatus", is("REJECTED")))
+                .andExpect(jsonPath("$.requestedRole", is("TENANT_RESIDENT")));
     }
 }

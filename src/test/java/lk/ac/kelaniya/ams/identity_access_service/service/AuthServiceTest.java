@@ -318,6 +318,27 @@ class AuthServiceTest {
     }
 
     @Test
+    @DisplayName("login rejects REJECTED account with 403 after password matches")
+    void testLogin_rejected_throws403() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$hashedPassword")
+                .accountStatus(AccountStatus.REJECTED)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+        given(passwordEncoder.matches("StrongPassword1", "$2a$10$hashedPassword")).willReturn(true);
+
+        assertThatThrownBy(() -> authService.login(validLoginRequest))
+                .isInstanceOf(AccountStatusException.class)
+                .hasMessageContaining("rejected");
+
+        verify(jwtService, never()).generateToken(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("login verifies password BEFORE checking status to prevent email enumeration")
     void testLogin_wrongPasswordOnPendingAccount_returnsGeneric401Not403() {
         UUID userId = UUID.randomUUID();
