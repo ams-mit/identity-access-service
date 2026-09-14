@@ -45,6 +45,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("PASSWORD_MISMATCH", ex.getMessage()));
     }
 
+    @ExceptionHandler(SamePasswordException.class)
+    public ResponseEntity<ErrorResponse> handleSamePasswordException(SamePasswordException ex) {
+        log.warn("Password change rejected - same password: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("SAME_PASSWORD", ex.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateEmailException(DuplicateEmailException ex) {
         log.warn("Email conflict: {}", ex.getMessage());
