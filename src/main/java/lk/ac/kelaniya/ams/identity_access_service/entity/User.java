@@ -73,6 +73,14 @@ public class User {
     @Builder.Default
     private AccountStatus accountStatus = AccountStatus.PENDING_VERIFICATION;
 
+    /**
+     * Indicates whether the user must change password on next login.
+     * Set to true for admin-created accounts with temporary passwords.
+     */
+    @Column(name = "must_change_password", nullable = false)
+    @Builder.Default
+    private boolean mustChangePassword = false;
+
     @Column(name = "failed_attempt_count", nullable = false)
     @Builder.Default
     private int failedAttemptCount = 0;
