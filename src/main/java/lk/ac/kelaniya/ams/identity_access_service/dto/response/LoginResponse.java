@@ -27,6 +27,9 @@ public class LoginResponse {
     @Schema(description = "Token lifetime in seconds", example = "1800")
     private long expiresIn;
 
+    @Schema(description = "Indicates whether the user must change password upon login (e.g. temporary password assigned by admin)", example = "false")
+    private boolean mustChangePassword;
+
     @Schema(description = "Authenticated user details")
     private UserSummary user;
 
@@ -49,5 +52,8 @@ public class LoginResponse {
         @Schema(description = "Assigned roles", example = "[]")
         @Builder.Default
         private List<String> roles = new ArrayList<>();
+
+        @Schema(description = "Indicates whether the user must change password upon login", example = "false")
+        private boolean mustChangePassword;
     }
 }

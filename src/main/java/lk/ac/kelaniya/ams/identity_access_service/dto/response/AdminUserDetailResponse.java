@@ -73,6 +73,9 @@ public class AdminUserDetailResponse {
     @Schema(description = "Whether the account is currently locked", example = "false")
     private boolean accountLocked;
 
+    @Schema(description = "Indicates whether the user must change their password upon initial login", example = "false")
+    private boolean mustChangePassword;
+
     @Schema(description = "Account creation timestamp", example = "2026-09-13T10:00:00Z")
     private Instant createdAt;
 

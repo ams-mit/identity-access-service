@@ -9,8 +9,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.AdminCreateUserRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.AssignRoleRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
@@ -24,6 +26,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -52,6 +55,55 @@ import java.util.UUID;
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
+
+    @PostMapping
+    @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
+    @Operation(
+            summary = "Create user account by administrator",
+            description = "Creates a new user account with ACTIVE status and a temporary password. "
+                    + "The user is flagged to change password upon initial login (mustChangePassword = true). "
+                    + "Creation produces a bare account with zero granted roles; roles are assigned "
+                    + "separately via POST /api/v1/users/{userId}/roles. "
+                    + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "User account created successfully",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminCreateUserResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request - validation failure on request payload or weak temporary password",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - missing, invalid, or expired Bearer token",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "Conflict - email already registered",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<AdminCreateUserResponse> createUser(
+            @Valid @RequestBody AdminCreateUserRequest request
+    ) {
+        AdminCreateUserResponse response = adminUserService.createUser(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
 
     @GetMapping
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")

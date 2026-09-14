@@ -4,9 +4,12 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.security.SignatureException;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.AdminCreateUserRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
@@ -37,8 +40,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -48,6 +53,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -820,5 +826,158 @@ class AdminUserControllerTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 201 with correct fields and does NOT leak temporary password")
+    void testCreateUser_success_returns201AndDoesNotLeakTemporaryPassword() throws Exception {
+        UUID newUserId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminCreateUserResponse response = AdminCreateUserResponse.builder()
+                .userId(newUserId)
+                .email("jane.doe@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .build();
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class))).willReturn(response);
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.doe@ams.lk\","
+                + "\"phone\":\"+94771234567\","
+                + "\"temporaryPassword\":\"TempSecret123\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.userId", is(newUserId.toString())))
+                .andExpect(jsonPath("$.email", is("jane.doe@ams.lk")))
+                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.mustChangePassword", is(true)))
+                .andExpect(content().string(not(containsString("TempSecret123"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 409 Conflict when email is already registered")
+    void testCreateUser_duplicateEmail_returns409() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class)))
+                .willThrow(new DuplicateEmailException("Email already in use"));
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"duplicate@ams.lk\","
+                + "\"phone\":\"+94771234567\","
+                + "\"temporaryPassword\":\"TempSecret123\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("EMAIL_ALREADY_EXISTS")))
+                .andExpect(jsonPath("$.error.message", is("Email already in use")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Short1",            // too short (< 8 chars)
+            "NoDigitsHereAtAll", // missing numeric digit
+            "",                  // blank password
+            "   "                // whitespace password
+    })
+    @DisplayName("POST /api/v1/users returns 400 Bad Request when temporary password violates password policy")
+    void testCreateUser_invalidTemporaryPassword_returns400(String weakPassword) throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.doe@ams.lk\","
+                + "\"phone\":\"+94771234567\","
+                + "\"temporaryPassword\":\"" + weakPassword + "\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 400 Bad Request when required fields are missing or invalid")
+    void testCreateUser_missingRequiredFields_returns400() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        String json = "{"
+                + "\"firstName\":\"\","
+                + "\"lastName\":\"\","
+                + "\"email\":\"not-an-email\","
+                + "\"temporaryPassword\":\"TempSecret123\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 403 Forbidden when caller is not SYSTEM_ADMINISTRATOR")
+    void testCreateUser_nonAdmin_returns403() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String token = "valid.nonadmin.token";
+        mockValidToken(token, userId, "user@ams.lk", List.of("TENANT_RESIDENT"));
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.doe@ams.lk\","
+                + "\"temporaryPassword\":\"TempSecret123\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 401 Unauthorized when request is unauthenticated")
+    void testCreateUser_unauthenticated_returns401() throws Exception {
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.doe@ams.lk\","
+                + "\"temporaryPassword\":\"TempSecret123\""
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnauthorized());
     }
 }

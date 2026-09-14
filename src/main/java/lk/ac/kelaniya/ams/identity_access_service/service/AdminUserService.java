@@ -1,11 +1,14 @@
 package lk.ac.kelaniya.ams.identity_access_service.service;
 
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.AdminCreateUserRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidStatusTransitionException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
@@ -20,10 +23,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -39,6 +44,7 @@ public class AdminUserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public static final Set<String> VALID_ROLES = Set.of(
             "SYSTEM_ADMINISTRATOR",
@@ -264,6 +270,54 @@ public class AdminUserService {
         return toDetailResponse(savedUser);
     }
 
+    /**
+     * Administratively creates a new user account with ACTIVE status and a temporary password.
+     * The user is immediately flagged to change their password on first login (mustChangePassword = true).
+     * The account is created with zero granted roles (role assignment is performed separately via IAM-07).
+     *
+     * @param request account creation payload containing personal details and temporary password
+     * @return creation response containing userId, email, accountStatus, and mustChangePassword
+     * @throws DuplicateEmailException if the email address is already registered
+     */
+    @Transactional
+    public AdminCreateUserResponse createUser(AdminCreateUserRequest request) {
+        String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
+        if (userRepository.existsByEmail(email)) {
+            log.warn("Admin user creation rejected: duplicate email address '{}'", email);
+            throw new DuplicateEmailException("Email already in use");
+        }
+
+        String passwordHash = passwordEncoder.encode(request.getTemporaryPassword());
+
+        User user = User.builder()
+                .email(email)
+                .username(email)
+                .passwordHash(passwordHash)
+                .firstName(request.getFirstName().trim())
+                .lastName(request.getLastName().trim())
+                .phone(request.getPhone() != null ? request.getPhone().trim() : null)
+                // requestedRole is specific to the self-registration review workflow;
+                // admin-created accounts are provisioned directly without an advisory role application.
+                .requestedRole(null)
+                // Admin creation is implicit administrative approval; initial status is ACTIVE immediately.
+                .accountStatus(AccountStatus.ACTIVE)
+                // Admin sets a temporary password; the user must change it upon initial login.
+                .mustChangePassword(true)
+                .failedAttemptCount(0)
+                .build();
+
+        User savedUser = userRepository.save(user);
+        log.info("AUDIT: Admin-created user account successfully saved with id: {} and email: {}",
+                savedUser.getId(), savedUser.getEmail());
+
+        return AdminCreateUserResponse.builder()
+                .userId(savedUser.getId())
+                .email(savedUser.getEmail())
+                .accountStatus(savedUser.getAccountStatus())
+                .mustChangePassword(savedUser.isMustChangePassword())
+                .build();
+    }
+
     private AdminUserSummaryResponse toSummaryResponse(User user) {
         return AdminUserSummaryResponse.builder()
                 .userId(user.getId())
@@ -292,6 +346,7 @@ public class AdminUserService {
                 .failedAttemptCount(user.getFailedAttemptCount())
                 .lockedUntil(user.getLockedUntil())
                 .accountLocked(user.isAccountLocked())
+                .mustChangePassword(user.isMustChangePassword())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

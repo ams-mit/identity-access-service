@@ -174,13 +174,19 @@ public class AuthService {
 
         log.info("User authenticated successfully with id: {}", user.getId());
 
+        // Note: mustChangePassword is surfaced to notify frontend clients to force a password-change
+        // screen on first login for admin-created accounts. Restricting/blocking access to other endpoints
+        // until the password is changed is out of scope for IAM-05 and will be enforced as a follow-up once
+        // IAM-01 (change password) is implemented.
         return LoginResponse.builder()
                 .accessToken(token)
                 .expiresIn(expiresIn)
+                .mustChangePassword(user.isMustChangePassword())
                 .user(LoginResponse.UserSummary.builder()
                         .userId(user.getId())
                         .email(user.getEmail())
                         .roles(roles)
+                        .mustChangePassword(user.isMustChangePassword())
                         .build())
                 .build();
     }
