@@ -6,7 +6,12 @@ import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
 import lk.ac.kelaniya.ams.identity_access_service.entity.UserRole;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleNotAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.SelfRoleAssignmentException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
+import lk.ac.kelaniya.ams.identity_access_service.repository.RoleRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,6 +45,9 @@ class AdminUserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private RoleRepository roleRepository;
 
     @InjectMocks
     private AdminUserService adminUserService;
@@ -451,5 +459,301 @@ class AdminUserServiceTest {
 
         assertThatThrownBy(() -> adminUserService.updateAccountStatus(missingId, request, UUID.randomUUID()))
                 .isInstanceOf(UserNotFoundException.class);
+    }
+
+    // =========================================================================
+    // Role Assignment & Removal Tests (AMS1-S2-IAM-07)
+    // =========================================================================
+
+    @Test
+    @DisplayName("assignRole: grants valid role to user by creating UserRole and returns updated details")
+    void testAssignRole_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("staff@ams.lk")
+                .firstName("Staff")
+                .lastName("Member")
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("FINANCE_OFFICER")
+                .userRoles(new HashSet<>())
+                .build();
+
+        Role role = Role.builder().id(UUID.randomUUID()).name("FINANCE_OFFICER").build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("FINANCE_OFFICER")).willReturn(Optional.of(role));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.assignRole(userId, "FINANCE_OFFICER", adminId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getRoles()).containsExactly("FINANCE_OFFICER");
+        assertThat(user.getUserRoles()).hasSize(1);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("assignRole: allows a user to hold multiple roles simultaneously without removing existing roles")
+    void testAssignRole_multipleRolesSimultaneously() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Role existingRole = Role.builder().id(UUID.randomUUID()).name("OWNER").build();
+        User user = User.builder()
+                .id(userId)
+                .email("multi@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("OWNER")
+                .userRoles(new HashSet<>())
+                .build();
+        user.addRole(existingRole);
+
+        Role newRole = Role.builder().id(UUID.randomUUID()).name("FINANCE_OFFICER").build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("FINANCE_OFFICER")).willReturn(Optional.of(newRole));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.assignRole(userId, "FINANCE_OFFICER", adminId);
+
+        assertThat(response.getRoles()).containsExactlyInAnyOrder("OWNER", "FINANCE_OFFICER");
+        assertThat(user.getUserRoles()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("assignRole: successfully assigns a role DIFFERENT from requestedRole (point 3 requirement)")
+    void testAssignRole_differentFromRequestedRole_succeeds() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("mismatch@ams.lk")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("OWNER") // User requested OWNER at registration
+                .userRoles(new HashSet<>())
+                .build();
+
+        // Admin assigns a completely different role: TECHNICIAN
+        Role technicianRole = Role.builder().id(UUID.randomUUID()).name("TECHNICIAN").build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("TECHNICIAN")).willReturn(Optional.of(technicianRole));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.assignRole(userId, "TECHNICIAN", adminId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getRequestedRole()).isEqualTo("OWNER");
+        assertThat(response.getRoles()).containsExactly("TECHNICIAN");
+    }
+
+    @Test
+    @DisplayName("assignRole: self-assignment guard blocks admin from assigning role to their own account")
+    void testAssignRole_selfAssignment_blocked() {
+        UUID adminId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> adminUserService.assignRole(adminId, "FINANCE_OFFICER", adminId))
+                .isInstanceOf(SelfRoleAssignmentException.class)
+                .hasMessageContaining("Administrators cannot assign roles to their own account.");
+    }
+
+    @Test
+    @DisplayName("assignRole: invalid role name throws InvalidRoleException (400)")
+    void testAssignRole_invalidRoleName_throwsException() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> adminUserService.assignRole(userId, "SUPERUSER", adminId))
+                .isInstanceOf(InvalidRoleException.class)
+                .hasMessageContaining("Invalid role: 'SUPERUSER'");
+
+        assertThatThrownBy(() -> adminUserService.assignRole(userId, null, adminId))
+                .isInstanceOf(InvalidRoleException.class);
+
+        assertThatThrownBy(() -> adminUserService.assignRole(userId, "   ", adminId))
+                .isInstanceOf(InvalidRoleException.class);
+    }
+
+    @Test
+    @DisplayName("assignRole: assigning already-held role throws RoleAlreadyAssignedException (409)")
+    void testAssignRole_alreadyHeld_throwsException() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Role existingRole = Role.builder().id(UUID.randomUUID()).name("FINANCE_OFFICER").build();
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+        user.addRole(existingRole);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> adminUserService.assignRole(userId, "FINANCE_OFFICER", adminId))
+                .isInstanceOf(RoleAlreadyAssignedException.class)
+                .hasMessageContaining("User already holds the role: FINANCE_OFFICER");
+    }
+
+    @Test
+    @DisplayName("assignRole: target user not found throws UserNotFoundException (404)")
+    void testAssignRole_userNotFound_throwsException() {
+        UUID missingId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        given(userRepository.findById(missingId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.assignRole(missingId, "FINANCE_OFFICER", adminId))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("assignRole: does NOT alter account status for PENDING_VERIFICATION account")
+    void testAssignRole_preservesPendingVerificationStatus() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .requestedRole("SECURITY_OFFICER")
+                .userRoles(new HashSet<>())
+                .build();
+
+        Role role = Role.builder().id(UUID.randomUUID()).name("SECURITY_OFFICER").build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("SECURITY_OFFICER")).willReturn(Optional.of(role));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.assignRole(userId, "SECURITY_OFFICER", adminId);
+
+        assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
+    }
+
+    @Test
+    @DisplayName("assignRole: does NOT alter account status for ACTIVE account")
+    void testAssignRole_preservesActiveStatus() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("APARTMENT_MANAGER")
+                .userRoles(new HashSet<>())
+                .build();
+
+        Role role = Role.builder().id(UUID.randomUUID()).name("APARTMENT_MANAGER").build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("APARTMENT_MANAGER")).willReturn(Optional.of(role));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.assignRole(userId, "APARTMENT_MANAGER", adminId);
+
+        assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("removeRole: removes specific granted role and leaves other roles intact")
+    void testRemoveRole_success() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Role role1 = Role.builder().id(UUID.randomUUID()).name("FINANCE_OFFICER").build();
+        Role role2 = Role.builder().id(UUID.randomUUID()).name("TENANT_RESIDENT").build();
+
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+        user.addRole(role1);
+        user.addRole(role2);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("FINANCE_OFFICER")).willReturn(Optional.of(role1));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.removeRole(userId, "FINANCE_OFFICER", adminId);
+
+        assertThat(response.getRoles()).containsExactly("TENANT_RESIDENT");
+        assertThat(user.getUserRoles()).hasSize(1);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("removeRole: self-removal guard blocks admin from removing role from their own account")
+    void testRemoveRole_selfRemoval_blocked() {
+        UUID adminId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> adminUserService.removeRole(adminId, "SYSTEM_ADMINISTRATOR", adminId))
+                .isInstanceOf(SelfRoleAssignmentException.class)
+                .hasMessageContaining("Administrators cannot remove roles from their own account.");
+    }
+
+    @Test
+    @DisplayName("removeRole: invalid role name throws InvalidRoleException (400)")
+    void testRemoveRole_invalidRoleName_throwsException() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> adminUserService.removeRole(userId, "NOT_A_ROLE", adminId))
+                .isInstanceOf(InvalidRoleException.class)
+                .hasMessageContaining("Invalid role: 'NOT_A_ROLE'");
+    }
+
+    @Test
+    @DisplayName("removeRole: removing a role the user does not have throws RoleNotAssignedException (409)")
+    void testRemoveRole_notHeld_throwsException() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> adminUserService.removeRole(userId, "SECURITY_OFFICER", adminId))
+                .isInstanceOf(RoleNotAssignedException.class)
+                .hasMessageContaining("User does not hold the role: SECURITY_OFFICER");
+    }
+
+    @Test
+    @DisplayName("removeRole: target user not found throws UserNotFoundException (404)")
+    void testRemoveRole_userNotFound_throwsException() {
+        UUID missingId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+
+        given(userRepository.findById(missingId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.removeRole(missingId, "SECURITY_OFFICER", adminId))
+                .isInstanceOf(UserNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("removeRole: does NOT alter account status")
+    void testRemoveRole_preservesAccountStatus() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        Role role = Role.builder().id(UUID.randomUUID()).name("MAINTENANCE_COORDINATOR").build();
+
+        User user = User.builder()
+                .id(userId)
+                .accountStatus(AccountStatus.ACTIVE)
+                .userRoles(new HashSet<>())
+                .build();
+        user.addRole(role);
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(roleRepository.findByName("MAINTENANCE_COORDINATOR")).willReturn(Optional.of(role));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> inv.getArgument(0));
+
+        AdminUserDetailResponse response = adminUserService.removeRole(userId, "MAINTENANCE_COORDINATOR", adminId);
+
+        assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
     }
 }
