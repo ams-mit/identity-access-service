@@ -53,7 +53,7 @@ class RoleAssignmentReportingTest {
     @BeforeEach
     void setUp() {
         adminUserService = new AdminUserService(userRepository, roleRepository, passwordEncoder);
-        userService = new UserService(userRepository);
+        userService = new UserService(userRepository, passwordEncoder);
 
         userId = UUID.randomUUID();
         adminId = UUID.randomUUID();
