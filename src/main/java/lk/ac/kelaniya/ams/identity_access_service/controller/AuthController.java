@@ -36,8 +36,8 @@ public class AuthController {
     @Operation(
             summary = "Register a new user",
             description = "Registers a new user account with PENDING_VERIFICATION status and an advisory requested role "
-                    + "(SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, OWNER, TENANT_RESIDENT, FINANCE_OFFICER, "
-                    + "MAINTENANCE_COORDINATOR, TECHNICIAN, SECURITY_OFFICER). "
+                    + "(OWNER, TENANT_RESIDENT). Only resident-facing roles are accepted for self-registration; "
+                    + "staff and administrative roles require an administrator-created account. "
                     + "The requested role is advisory only for administrative review and grants zero permissions or roles upon registration."
     )
     @ApiResponses(value = {

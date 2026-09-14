@@ -57,21 +57,15 @@ public class RegisterRequest {
 
     @NotBlank(message = "Requested role is required")
     @Pattern(
-            regexp = "^(SYSTEM_ADMINISTRATOR|APARTMENT_MANAGER|OWNER|TENANT_RESIDENT|FINANCE_OFFICER|MAINTENANCE_COORDINATOR|TECHNICIAN|SECURITY_OFFICER)$",
-            message = "Requested role must be one of: SYSTEM_ADMINISTRATOR, APARTMENT_MANAGER, OWNER, TENANT_RESIDENT, FINANCE_OFFICER, MAINTENANCE_COORDINATOR, TECHNICIAN, SECURITY_OFFICER"
+            regexp = "^(OWNER|TENANT_RESIDENT)$",
+            message = "Requested role must be one of: OWNER, TENANT_RESIDENT"
     )
     @Schema(
-            description = "Advisory requested role for account review. Does not grant permissions directly.",
+            description = "Advisory requested role for account review. Self-registration only accepts resident-facing roles (OWNER, TENANT_RESIDENT). Staff and administrative roles require an administrator-created account. Does not grant permissions directly.",
             example = "OWNER",
             allowableValues = {
-                    "SYSTEM_ADMINISTRATOR",
-                    "APARTMENT_MANAGER",
                     "OWNER",
-                    "TENANT_RESIDENT",
-                    "FINANCE_OFFICER",
-                    "MAINTENANCE_COORDINATOR",
-                    "TECHNICIAN",
-                    "SECURITY_OFFICER"
+                    "TENANT_RESIDENT"
             },
             requiredMode = Schema.RequiredMode.REQUIRED
     )
