@@ -8,6 +8,10 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailRe
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidRoleException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleAlreadyAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.RoleNotAssignedException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.SelfRoleAssignmentException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
 import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import lk.ac.kelaniya.ams.identity_access_service.security.SecurityConfig;
@@ -40,8 +44,10 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -544,5 +550,275 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.userId", is(targetId.toString())))
                 .andExpect(jsonPath("$.accountStatus", is("REJECTED")))
                 .andExpect(jsonPath("$.requestedRole", is("TENANT_RESIDENT")));
+    }
+
+    // =========================================================================
+    // Role Assignment Tests: POST /api/v1/users/{userId}/roles
+    // =========================================================================
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 401 when unauthenticated")
+    void testAssignRole_unauthenticated_returns401() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 403 for non-admin roles")
+    void testAssignRole_nonAdmin_returns403() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.manager.token";
+        mockValidToken(token, UUID.randomUUID(), "manager@ams.lk", List.of("APARTMENT_MANAGER"));
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 403 when admin attempts self-assignment")
+    void testAssignRole_selfAssignment_returns403() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", adminId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")))
+                .andExpect(jsonPath("$.error.message", is("Administrators cannot assign roles to their own account.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 200 on successful role grant")
+    void testAssignRole_success_returns200() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminUserDetailResponse detail = AdminUserDetailResponse.builder()
+                .userId(targetId)
+                .email("user@ams.lk")
+                .fullName("Jane Doe")
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("TENANT_RESIDENT")
+                .roles(List.of("FINANCE_OFFICER"))
+                .build();
+
+        given(adminUserService.assignRole(eq(targetId), eq("FINANCE_OFFICER"), eq(adminId))).willReturn(detail);
+
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.roles[0]", is("FINANCE_OFFICER")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 400 when role name is blank or invalid")
+    void testAssignRole_invalidRole_returns400() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        // Case 1: blank role fails @NotBlank validation
+        String blankJson = "{\"role\":\"\"}";
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(blankJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+
+        // Case 2: service throws InvalidRoleException
+        given(adminUserService.assignRole(eq(targetId), eq("UNKNOWN_ROLE"), eq(adminId)))
+                .willThrow(new InvalidRoleException("Invalid role: 'UNKNOWN_ROLE'. Valid roles are: ..."));
+
+        String unknownRoleJson = "{\"role\":\"UNKNOWN_ROLE\"}";
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(unknownRoleJson))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_ROLE")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 409 when user already holds the role")
+    void testAssignRole_alreadyHeld_returns409() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.assignRole(eq(targetId), eq("FINANCE_OFFICER"), eq(adminId)))
+                .willThrow(new RoleAlreadyAssignedException("User already holds the role: FINANCE_OFFICER"));
+
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", targetId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("ROLE_ALREADY_ASSIGNED")))
+                .andExpect(jsonPath("$.error.message", is("User already holds the role: FINANCE_OFFICER")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users/{userId}/roles returns 404 when target user does not exist")
+    void testAssignRole_userNotFound_returns404() throws Exception {
+        UUID missingId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.assignRole(eq(missingId), eq("FINANCE_OFFICER"), eq(adminId)))
+                .willThrow(new UserNotFoundException("User not found with id: " + missingId));
+
+        String json = "{\"role\":\"FINANCE_OFFICER\"}";
+
+        mockMvc.perform(post("/api/v1/users/{userId}/roles", missingId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
+    }
+
+    // =========================================================================
+    // Role Removal Tests: DELETE /api/v1/users/{userId}/roles/{roleName}
+    // =========================================================================
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 401 when unauthenticated")
+    void testRemoveRole_unauthenticated_returns401() throws Exception {
+        UUID targetId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "FINANCE_OFFICER"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 403 for non-admin roles")
+    void testRemoveRole_nonAdmin_returns403() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        String token = "valid.tenant.token";
+        mockValidToken(token, UUID.randomUUID(), "tenant@ams.lk", List.of("TENANT_RESIDENT"));
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "FINANCE_OFFICER")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 403 when admin attempts self-removal")
+    void testRemoveRole_selfRemoval_returns403() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", adminId, "SYSTEM_ADMINISTRATOR")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")))
+                .andExpect(jsonPath("$.error.message", is("Administrators cannot remove roles from their own account.")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 200 on successful role removal")
+    void testRemoveRole_success_returns200() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminUserDetailResponse detail = AdminUserDetailResponse.builder()
+                .userId(targetId)
+                .email("user@ams.lk")
+                .fullName("Jane Doe")
+                .accountStatus(AccountStatus.ACTIVE)
+                .requestedRole("TENANT_RESIDENT")
+                .roles(List.of())
+                .build();
+
+        given(adminUserService.removeRole(eq(targetId), eq("FINANCE_OFFICER"), eq(adminId))).willReturn(detail);
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "FINANCE_OFFICER")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.roles", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 400 when role name is invalid")
+    void testRemoveRole_invalidRole_returns400() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.removeRole(eq(targetId), eq("INVALID_ROLE"), eq(adminId)))
+                .willThrow(new InvalidRoleException("Invalid role: 'INVALID_ROLE'. Valid roles are: ..."));
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "INVALID_ROLE")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_ROLE")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 409 when user does not hold the role")
+    void testRemoveRole_notHeld_returns409() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.removeRole(eq(targetId), eq("FINANCE_OFFICER"), eq(adminId)))
+                .willThrow(new RoleNotAssignedException("User does not hold the role: FINANCE_OFFICER"));
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "FINANCE_OFFICER")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("ROLE_NOT_ASSIGNED")))
+                .andExpect(jsonPath("$.error.message", is("User does not hold the role: FINANCE_OFFICER")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/users/{userId}/roles/{roleName} returns 404 when target user does not exist")
+    void testRemoveRole_userNotFound_returns404() throws Exception {
+        UUID missingId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.removeRole(eq(missingId), eq("FINANCE_OFFICER"), eq(adminId)))
+                .willThrow(new UserNotFoundException("User not found with id: " + missingId));
+
+        mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", missingId, "FINANCE_OFFICER")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
     }
 }

@@ -129,6 +129,38 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("INVALID_STATUS_TRANSITION", ex.getMessage()));
     }
 
+    @ExceptionHandler(InvalidRoleException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRoleException(InvalidRoleException ex) {
+        log.warn("Invalid role specified: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_ROLE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleAlreadyAssignedException.class)
+    public ResponseEntity<ErrorResponse> handleRoleAlreadyAssignedException(RoleAlreadyAssignedException ex) {
+        log.warn("Role assignment conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("ROLE_ALREADY_ASSIGNED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleNotAssignedException.class)
+    public ResponseEntity<ErrorResponse> handleRoleNotAssignedException(RoleNotAssignedException ex) {
+        log.warn("Role removal conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("ROLE_NOT_ASSIGNED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SelfRoleAssignmentException.class)
+    public ResponseEntity<ErrorResponse> handleSelfRoleAssignmentException(SelfRoleAssignmentException ex) {
+        log.warn("Self role assignment blocked: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("FORBIDDEN", ex.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
         log.error("Unhandled internal exception caught: ", ex);
