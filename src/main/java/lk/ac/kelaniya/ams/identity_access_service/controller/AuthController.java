@@ -7,10 +7,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ForgotPasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.RegisterRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ResetPasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.MessageResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -106,6 +109,68 @@ public class AuthController {
     })
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/forgot-password")
+    @Operation(
+            summary = "Request password reset instructions",
+            description = "Initiates password reset flow by submitting an account email address. "
+                    + "Enforces strict anti-enumeration: always returns HTTP 200 with an identical generic message "
+                    + "regardless of whether the email exists or belongs to an active account. "
+                    + "Note: Actual email/SMS delivery is out of scope for this prototype per SRS specifications; "
+                    + "for testing purposes, the raw token is logged server-side as a DEV-ONLY diagnostic log "
+                    + "to facilitate manual testing via Swagger UI or Postman without requiring a mail server."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Password reset instructions requested (generic message returned unconditionally)",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Validation failure on email format or empty request",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<MessageResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        MessageResponse response = authService.forgotPassword(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/reset-password")
+    @Operation(
+            summary = "Reset password using reset token",
+            description = "Resets user password using a cryptographically secure reset token. "
+                    + "Enforces anti-enumeration: all invalid, expired, and already-used token cases return an identical "
+                    + "generic 400 error. The new password must satisfy the standard system password complexity policy "
+                    + "and match the confirmation password. Upon successful reset, all outstanding reset tokens for the user are invalidated."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Password reset successfully",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = MessageResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid or expired reset token (generic error), password mismatch, or validation failure",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<MessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        MessageResponse response = authService.resetPassword(request);
         return ResponseEntity.ok(response);
     }
 

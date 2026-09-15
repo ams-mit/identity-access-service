@@ -7,3 +7,7 @@ jwt:
   private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
   public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
   expiration-seconds: 3600
+auth:
+  password-reset:
+    token-validity-minutes: 30
+

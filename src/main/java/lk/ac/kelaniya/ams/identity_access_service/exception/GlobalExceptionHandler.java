@@ -53,6 +53,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("SAME_PASSWORD", ex.getMessage()));
     }
 
+    @ExceptionHandler(InvalidResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidResetTokenException(InvalidResetTokenException ex) {
+        log.warn("Password reset rejected: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_RESET_TOKEN", ex.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateEmailException(DuplicateEmailException ex) {
         log.warn("Email conflict: {}", ex.getMessage());
