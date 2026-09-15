@@ -50,6 +50,8 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password",
                                 "/api/v1/auth/public-key",
                                 "/api/v1/auth/jwks.json",
                                 "/api/v1/auth/.well-known/**",
