@@ -298,4 +298,60 @@ class PasswordResetRoundTripTest {
         assertThat(newLogin.isMustChangePassword()).isFalse();
         assertThat(newLogin.getUser().isMustChangePassword()).isFalse();
     }
+
+    @Test
+    @DisplayName("Requesting forgot-password twice for the same account invalidates the first token (only latest token is valid even if first has not reached expires_at)")
+    void testForgotPassword_requestTwice_invalidatesFirstTokenAndOnlyLatestIsValid() {
+        // First forgot-password request
+        authService.forgotPassword(ForgotPasswordRequest.builder()
+                .email(userEmail)
+                .build());
+
+        assertThat(tokenStore).hasSize(1);
+        PasswordResetToken token1 = tokenStore.get(0);
+        assertThat(token1.getUsedAt()).isNull();
+        // token1's expiry is in the future
+        assertThat(token1.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofMinutes(25)));
+
+        String rawToken1 = "rawToken1ValueExplicit";
+        token1.setTokenHash(sha256Hex(rawToken1));
+
+        // Second forgot-password request for the same account
+        authService.forgotPassword(ForgotPasswordRequest.builder()
+                .email(userEmail)
+                .build());
+
+        assertThat(tokenStore).hasSize(2);
+        PasswordResetToken token2 = tokenStore.stream()
+                .filter(t -> !t.getId().equals(token1.getId()))
+                .findFirst().orElseThrow();
+
+        String rawToken2 = "rawToken2ValueExplicit";
+        token2.setTokenHash(sha256Hex(rawToken2));
+
+        // Critical verification: token1.usedAt is now populated (invalidated)
+        assertThat(token1.getUsedAt()).isNotNull();
+        // token2 is active and unconsumed
+        assertThat(token2.getUsedAt()).isNull();
+
+        // Attempting reset with the first token FAILS with generic 400 even though expires_at has not passed
+        assertThatThrownBy(() -> authService.resetPassword(ResetPasswordRequest.builder()
+                .resetToken(rawToken1)
+                .newPassword("NewPasswordAlpha1")
+                .confirmNewPassword("NewPasswordAlpha1")
+                .build()))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage("Invalid or expired password reset token.");
+
+        // Attempting reset with the latest (second) token SUCCEEDS
+        MessageResponse successResponse = authService.resetPassword(ResetPasswordRequest.builder()
+                .resetToken(rawToken2)
+                .newPassword("NewPasswordAlpha1")
+                .confirmNewPassword("NewPasswordAlpha1")
+                .build());
+
+        assertThat(successResponse.getMessage()).isEqualTo("Password has been reset successfully.");
+        assertThat(passwordEncoder.matches("NewPasswordAlpha1", userDb.get(userId).getPasswordHash())).isTrue();
+    }
 }
+
