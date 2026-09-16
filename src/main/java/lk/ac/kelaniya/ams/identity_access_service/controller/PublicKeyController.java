@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.JwksResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.PublicKeyResponse;
 import lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyProvider;
@@ -28,7 +29,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
-@Tag(name = "Public Key", description = "RSA public key and JWKS discovery endpoints for token verification")
+@Tag(name = "Public Key / JWKS", description = "RSA public key and JWKS discovery endpoints for token verification")
 public class PublicKeyController {
 
     private final RsaKeyProvider rsaKeyProvider;
@@ -46,6 +47,11 @@ public class PublicKeyController {
                     responseCode = "200",
                     description = "RSA public key in X.509 PEM format",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = PublicKeyResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
     public ResponseEntity<PublicKeyResponse> getPublicKey() {
@@ -72,6 +78,11 @@ public class PublicKeyController {
                     responseCode = "200",
                     description = "RFC 7517 compliant JWKS payload",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = JwksResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
     public ResponseEntity<JwksResponse> getJwks() {

@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.ForgotPasswordRequest;
@@ -177,7 +178,8 @@ public class AuthController {
     @PostMapping("/logout")
     @Operation(
             summary = "Logout user",
-            description = "Logs out the authenticated user. In the current stateless JWT architecture, the client discards the token. Server-side token revocation/blocklisting is out of scope for Sprint 1 and would require Redis or a database-backed denylist if needed in future."
+            description = "Logs out the authenticated user. In the current stateless JWT architecture, the client discards the token. Server-side token revocation/blocklisting is out of scope for Sprint 1 and would require Redis or a database-backed denylist if needed in future.",
+            security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -187,6 +189,11 @@ public class AuthController {
             @ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing or invalid Bearer token",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "500",
+                    description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })

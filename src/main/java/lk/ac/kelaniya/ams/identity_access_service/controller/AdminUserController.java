@@ -60,11 +60,10 @@ public class AdminUserController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Create user account by administrator",
-            description = "Creates a new user account with ACTIVE status and a temporary password. "
-                    + "The user is flagged to change password upon initial login (mustChangePassword = true). "
-                    + "Creation produces a bare account with zero granted roles; roles are assigned "
-                    + "separately via POST /api/v1/users/{userId}/roles. "
-                    + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Creates a new user account with ACTIVE status and an initial temporary password.\n\n"
+                    + "- **Forced Password Change**: The temporary password immediately flags `mustChangePassword = true`, forcing the user to change their password upon initial login.\n"
+                    + "- **Separate Role Assignment**: Creation produces a base account with zero granted roles; system and staff roles must be assigned separately via `POST /api/v1/users/{userId}/roles`.\n\n"
+                    + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -109,14 +108,19 @@ public class AdminUserController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Search and list users with pagination and filters",
-            description = "Retrieves a paginated list of user summaries. Supports free-text search on name and email, "
-                    + "filtering by account status, and filtering by requested role for batch review of pending registrations. "
-                    + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Retrieves a paginated list of user summaries. Supports free-text search across name and email, "
+                    + "filtering by account lifecycle status, and filtering by advisory requested role for batch review of pending registrations.\n\n"
+                    + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
             @ApiResponse(
                     responseCode = "200",
                     description = "Users retrieved successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Bad request - invalid filter parameter or pagination argument",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
                     responseCode = "401",
@@ -148,8 +152,9 @@ public class AdminUserController {
             @RequestParam(required = false) AccountStatus status,
 
             @Parameter(
-                    description = "Filter by advisory requested role (e.g. OWNER, TENANT_RESIDENT, TECHNICIAN). "
-                            + "Enables administrators to batch-review pending account requests grouped by intended role.",
+                    description = "Filter by advisory requested role (e.g. OWNER, TENANT_RESIDENT). "
+                            + "Specifically enables administrators to batch-review pending registration requests grouped by intended role "
+                            + "prior to formal account approval and role assignment.",
                     example = "OWNER"
             )
             @RequestParam(required = false) String requestedRole,
@@ -209,10 +214,13 @@ public class AdminUserController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Update user account lifecycle status",
-            description = "Transitions a user's account status according to strict state machine rules. "
-                    + "Allowed transitions: PENDING_VERIFICATION -> [ACTIVE, REJECTED], ACTIVE -> [SUSPENDED, DEACTIVATED], "
-                    + "SUSPENDED -> [ACTIVE, DEACTIVATED]. A non-blank reason is required when transitioning to SUSPENDED, "
-                    + "DEACTIVATED, or REJECTED. Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Transitions a user's account lifecycle status according to the strict state machine matrix:\n\n"
+                    + "- **PENDING_VERIFICATION** -> **ACTIVE** (reason optional), **REJECTED** (reason required)\n"
+                    + "- **ACTIVE** -> **SUSPENDED** (reason required), **DEACTIVATED** (reason required)\n"
+                    + "- **SUSPENDED** -> **ACTIVE** (reason optional), **DEACTIVATED** (reason required)\n\n"
+                    + "All other status transitions are invalid and rejected with HTTP 400 (`INVALID_STATUS_TRANSITION`).\n"
+                    + "A non-blank reason is strictly mandatory when transitioning to `SUSPENDED`, `DEACTIVATED`, or `REJECTED`.\n\n"
+                    + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -261,11 +269,11 @@ public class AdminUserController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Assign role to user",
-            description = "Grants a staff or system role to a user account by creating a UserRole record. "
-                    + "A user may hold multiple roles simultaneously (existing roles are not removed). "
-                    + "The assigned role is not constrained to match the user's requestedRole. "
-                    + "Self-assignment by an administrator is strictly prohibited. "
-                    + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Grants a staff or system role to a user account by creating a UserRole record.\n\n"
+                    + "- **Additive**: A user may hold multiple roles simultaneously (existing roles are preserved).\n"
+                    + "- **Independent of requestedRole**: The assigned role is independent of and not constrained by the user's advisory requestedRole submitted at registration.\n"
+                    + "- **Self-Assignment Guard**: Self-assignment by an administrator to their own account is strictly prohibited and returns HTTP 403 (`FORBIDDEN`).\n\n"
+                    + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
             @ApiResponse(
@@ -322,9 +330,9 @@ public class AdminUserController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Remove role from user",
-            description = "Removes a specific granted role from a user account. "
-                    + "Self-removal by an administrator is strictly prohibited. "
-                    + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Removes a specific granted role from a user account.\n\n"
+                    + "- **Self-Removal Guard**: Self-removal by an administrator from their own account is strictly prohibited and returns HTTP 403 (`FORBIDDEN`).\n\n"
+                    + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
             @ApiResponse(
