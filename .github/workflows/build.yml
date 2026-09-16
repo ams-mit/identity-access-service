@@ -27,7 +27,8 @@ jobs:
         with:
           java-version: '21'
           distribution: 'temurin'
-          cache: 'maven'
+      # Automated tests dynamically generate ephemeral RSA keys (RS256) at test runtime.
+      # Production environments must provision real RSA keypairs via secrets management (JWT_PRIVATE_KEY_PATH / JWT_PUBLIC_KEY_PATH).
       - name: Build and run tests
         run: ./mvnw clean verify
         env:

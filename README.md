@@ -58,7 +58,11 @@ openssl genpkey -algorithm RSA -out certs/private_key.pem -pkeyopt rsa_keygen_bi
 openssl rsa -pubout -in certs/private_key.pem -out certs/public_key.pem
 ```
 
-> **Note**: Key files in `certs/` and `*.pem` are ignored by git and must never be committed. Configure paths in your `.env` file via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH`.
+> **Note on Key Provisioning & Security**:
+> - Key files in `certs/` and `*.pem` are ignored by git and must **never** be committed.
+> - **Local Development**: Generate a keypair using the commands above and configure paths in your `.env` file via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` (or rely on default `classpath:certs/`).
+> - **Production / Deployed Environments**: A real, cryptographically secure 2048-bit (or 4096-bit) RSA keypair must be provisioned before application startup via your deployment secrets infrastructure (e.g. Kubernetes Secrets, AWS Secrets Manager, HashiCorp Vault, or mounted secret volumes). Provide the file or URI locations via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` environment variables.
+> - **Automated Tests (CI & Local)**: Test suites (`IdentityAccessServiceApplicationTests` and `AbstractIntegrationTest`) automatically provision ephemeral, throwaway RSA keypairs at test runtime, ensuring automated builds and CI runs remain completely self-contained with no pre-existing key files required.
 
 ### 4. Run the Application
 
