@@ -10,6 +10,7 @@ import lk.ac.kelaniya.ams.identity_access_service.repository.PasswordResetTokenR
 import lk.ac.kelaniya.ams.identity_access_service.repository.RoleRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRoleRepository;
+import lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator;
 import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,6 +27,9 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyPair;
 import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
@@ -46,7 +50,23 @@ public abstract class AbstractIntegrationTest {
             .withUsername("identity_user")
             .withPassword("identity_pass");
 
+    private static final Path TEMP_KEY_DIR;
+    private static final Path TEMP_PRIVATE_KEY;
+    private static final Path TEMP_PUBLIC_KEY;
+
     static {
+        try {
+            TEMP_KEY_DIR = Files.createTempDirectory("ams-test-rsa-keys-");
+            TEMP_PRIVATE_KEY = TEMP_KEY_DIR.resolve("private_key.pem");
+            TEMP_PUBLIC_KEY = TEMP_KEY_DIR.resolve("public_key.pem");
+            KeyPair keyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+            RsaKeyPairGenerator.writeKeys(keyPair, TEMP_PRIVATE_KEY, TEMP_PUBLIC_KEY);
+            TEMP_KEY_DIR.toFile().deleteOnExit();
+            TEMP_PRIVATE_KEY.toFile().deleteOnExit();
+            TEMP_PUBLIC_KEY.toFile().deleteOnExit();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate ephemeral RSA keypair for integration tests", e);
+        }
         MYSQL_CONTAINER.start();
     }
 
@@ -58,6 +78,9 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.driver-class-name", MYSQL_CONTAINER::getDriverClassName);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "none");
         registry.add("spring.flyway.enabled", () -> "true");
+
+        registry.add("jwt.private-key-path", () -> TEMP_PRIVATE_KEY.toUri().toString());
+        registry.add("jwt.public-key-path", () -> TEMP_PUBLIC_KEY.toUri().toString());
     }
 
     @Autowired
