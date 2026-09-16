@@ -44,32 +44,56 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             try {
                 Jws<Claims> claimsJws = jwtService.parseAndValidateToken(token);
                 Claims claims = claimsJws.getPayload();
-                String userIdStr = claims.getSubject();
-                UUID userId = UUID.fromString(userIdStr);
-                String email = claims.get("email", String.class);
+                String tokenType = claims.get("type", String.class);
 
-                @SuppressWarnings("unchecked")
-                List<String> roles = claims.get("roles", List.class);
-                List<SimpleGrantedAuthority> authorities = (roles != null)
-                        ? roles.stream()
-                                .flatMap(role -> java.util.stream.Stream.of(
-                                        new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role),
-                                        new SimpleGrantedAuthority(role)
-                                ))
-                                .distinct()
-                                .toList()
-                        : List.of();
+                if ("service".equalsIgnoreCase(tokenType)) {
+                    String serviceName = claims.getSubject();
+                    if (serviceName == null || serviceName.isBlank()) {
+                        throw new JwtException("Service token subject must not be blank");
+                    }
 
-                UserPrincipal principal = UserPrincipal.builder()
-                        .userId(userId)
-                        .email(email)
-                        .roles(roles != null ? roles : List.of())
-                        .build();
+                    ServicePrincipal principal = ServicePrincipal.builder()
+                            .serviceName(serviceName)
+                            .tokenType("service")
+                            .build();
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                    List<SimpleGrantedAuthority> authorities = List.of(
+                            new SimpleGrantedAuthority("ROLE_SERVICE"),
+                            new SimpleGrantedAuthority("ROLE_INTERNAL_SERVICE")
+                    );
 
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(principal, null, authorities);
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                } else {
+                    String userIdStr = claims.getSubject();
+                    UUID userId = UUID.fromString(userIdStr);
+                    String email = claims.get("email", String.class);
+
+                    @SuppressWarnings("unchecked")
+                    List<String> roles = claims.get("roles", List.class);
+                    List<SimpleGrantedAuthority> authorities = (roles != null)
+                            ? roles.stream()
+                                    .flatMap(role -> java.util.stream.Stream.of(
+                                            new SimpleGrantedAuthority(role.startsWith("ROLE_") ? role : "ROLE_" + role),
+                                            new SimpleGrantedAuthority(role)
+                                    ))
+                                    .distinct()
+                                    .toList()
+                            : List.of();
+
+                    UserPrincipal principal = UserPrincipal.builder()
+                            .userId(userId)
+                            .email(email)
+                            .roles(roles != null ? roles : List.of())
+                            .build();
+
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(principal, null, authorities);
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             } catch (JwtException | IllegalArgumentException ex) {
                 log.warn("Invalid JWT token provided: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();
