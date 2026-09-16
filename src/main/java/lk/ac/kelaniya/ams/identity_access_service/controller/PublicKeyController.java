@@ -28,7 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
-@Tag(name = "Public Key", description = "RSA public key and JWKS discovery endpoints for token verification")
+@Tag(name = "Public Key / JWKS", description = "RSA public key and JWKS discovery endpoints for token verification")
 public class PublicKeyController {
 
     private final RsaKeyProvider rsaKeyProvider;
