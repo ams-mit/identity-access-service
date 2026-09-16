@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RoleResponse;
@@ -34,7 +35,8 @@ public class RoleController {
     @PreAuthorize("hasRole('SYSTEM_ADMINISTRATOR')")
     @Operation(
             summary = "Get all system roles",
-            description = "Retrieves all standard AMS roles. Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
+            description = "Retrieves all standard AMS roles. Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role.",
+            security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
             @ApiResponse(
