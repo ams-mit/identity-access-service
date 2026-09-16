@@ -22,7 +22,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("Identity Access Service API")
                         .description("Identity and Access Management REST APIs for the Apartment Management System (Group 1).")
-                        .version("0.1.0"))
+                        .version("0.2.0"))
                 .addSecurityItem(new SecurityRequirement().addList(SECURITY_SCHEME_NAME))
                 .components(new Components()
                         .addSecuritySchemes(SECURITY_SCHEME_NAME, new SecurityScheme()
