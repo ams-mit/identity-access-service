@@ -68,6 +68,7 @@ class JwtServiceTest {
         // Payload / Claims assertions
         Claims payload = parsedJws.getPayload();
         assertThat(payload.getSubject()).isEqualTo(userId.toString());
+        assertThat(payload.get("type", String.class)).isEqualTo("user");
         assertThat(payload.get("email", String.class)).isEqualTo("resident@ams.lk");
         assertThat(payload.get("roles", List.class)).containsExactly("RESIDENT", "TENANT");
 
@@ -143,5 +144,52 @@ class JwtServiceTest {
     void testParseAndValidateToken_malformedToken_throwsMalformedJwtException() {
         assertThatThrownBy(() -> jwtService.parseAndValidateToken("not.a.valid.jwt.payload"))
                 .isInstanceOf(io.jsonwebtoken.MalformedJwtException.class);
+    }
+
+    @Test
+    @DisplayName("generateServiceToken creates valid RS256 token with type=service and no email/roles")
+    void testGenerateServiceToken_validTrustedService() {
+        String serviceName = "resident-management-service";
+
+        String token = jwtService.generateServiceToken(serviceName);
+
+        assertThat(token).isNotBlank();
+
+        Jws<Claims> parsedJws = jwtService.parseAndValidateToken(token);
+
+        assertThat(parsedJws.getHeader().getKeyId()).isEqualTo("test-kid-123");
+        assertThat(parsedJws.getHeader().getAlgorithm()).isEqualTo("RS256");
+
+        Claims payload = parsedJws.getPayload();
+        assertThat(payload.getSubject()).isEqualTo("resident-management-service");
+        assertThat(payload.get("type", String.class)).isEqualTo("service");
+        assertThat(payload.get("email")).isNull();
+        assertThat(payload.get("roles")).isNull();
+
+        Date iat = payload.getIssuedAt();
+        Date exp = payload.getExpiration();
+        assertThat(iat).isNotNull();
+        assertThat(exp).isNotNull();
+
+        long diffSeconds = (exp.getTime() - iat.getTime()) / 1000;
+        assertThat(diffSeconds).isEqualTo(300);
+    }
+
+    @Test
+    @DisplayName("generateServiceToken rejects untrusted service names")
+    void testGenerateServiceToken_untrustedService_throwsException() {
+        assertThatThrownBy(() -> jwtService.generateServiceToken("unknown-malicious-service"))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class)
+                .hasMessageContaining("Untrusted or unrecognized service");
+    }
+
+    @Test
+    @DisplayName("generateServiceToken rejects null or blank service names")
+    void testGenerateServiceToken_blankOrNullService_throwsException() {
+        assertThatThrownBy(() -> jwtService.generateServiceToken(null))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
+
+        assertThatThrownBy(() -> jwtService.generateServiceToken("   "))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
     }
 }
