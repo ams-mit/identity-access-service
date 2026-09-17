@@ -28,6 +28,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -124,6 +125,88 @@ class AdminAuditControllerTest {
                 any(),
                 any(),
                 any(),
+                any(Pageable.class)
+        );
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/audit-logs?eventType=ROLE_ASSIGNED returns ONLY matching eventType events")
+    void testGetAuditLogs_filterByEventType_returnsOnlyMatchingEvents() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.admin.jwt.token";
+        mockValidUserToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID auditId = UUID.randomUUID();
+        UUID subjectId = UUID.randomUUID();
+        AuditEventResponse matchingItem = AuditEventResponse.builder()
+                .id(auditId)
+                .eventType(AuditEventType.ROLE_ASSIGNED)
+                .subjectUserId(subjectId)
+                .actorUserId(adminId)
+                .newValue("FINANCE_OFFICER")
+                .createdAt(Instant.now())
+                .build();
+
+        Page<AuditEventResponse> page = new PageImpl<>(List.of(matchingItem));
+        given(auditService.searchAuditLogs(eq(AuditEventType.ROLE_ASSIGNED), isNull(), isNull(), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(page);
+
+        mockMvc.perform(get("/api/v1/audit-logs")
+                        .header("Authorization", "Bearer " + token)
+                        .param("eventType", "ROLE_ASSIGNED")
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id", is(auditId.toString())))
+                .andExpect(jsonPath("$.content[0].eventType", is("ROLE_ASSIGNED")))
+                .andExpect(jsonPath("$.content[0].newValue", is("FINANCE_OFFICER")));
+
+        verify(auditService).searchAuditLogs(
+                eq(AuditEventType.ROLE_ASSIGNED),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                any(Pageable.class)
+        );
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/audit-logs?subjectUserId=... returns ONLY that user's events")
+    void testGetAuditLogs_filterBySubjectUserId_returnsOnlyThatUsersEvents() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.admin.jwt.token";
+        mockValidUserToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID targetSubjectId = UUID.randomUUID();
+        UUID auditId = UUID.randomUUID();
+        AuditEventResponse userItem = AuditEventResponse.builder()
+                .id(auditId)
+                .eventType(AuditEventType.PASSWORD_CHANGED)
+                .subjectUserId(targetSubjectId)
+                .actorUserId(targetSubjectId)
+                .createdAt(Instant.now())
+                .build();
+
+        Page<AuditEventResponse> page = new PageImpl<>(List.of(userItem));
+        given(auditService.searchAuditLogs(isNull(), eq(targetSubjectId), isNull(), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(page);
+
+        mockMvc.perform(get("/api/v1/audit-logs")
+                        .header("Authorization", "Bearer " + token)
+                        .param("subjectUserId", targetSubjectId.toString())
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", hasSize(1)))
+                .andExpect(jsonPath("$.content[0].id", is(auditId.toString())))
+                .andExpect(jsonPath("$.content[0].subjectUserId", is(targetSubjectId.toString())));
+
+        verify(auditService).searchAuditLogs(
+                isNull(),
+                eq(targetSubjectId),
+                isNull(),
+                isNull(),
+                isNull(),
                 any(Pageable.class)
         );
     }

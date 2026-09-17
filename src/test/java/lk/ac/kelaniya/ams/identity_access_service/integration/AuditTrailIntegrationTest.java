@@ -176,6 +176,109 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Filtering: Query audit logs filtered by eventType ONLY returns matching events")
+    void testAuditTrailQuery_filterByEventTypeOnly_returnsOnlyMatchingEvents() throws Exception {
+        String adminEmail = "eventtype.admin@ams.lk";
+        String adminPassword = "AdminPassword123";
+        seedAdminUser(adminEmail, adminPassword);
+        String adminToken = loginAndGetToken(adminEmail, adminPassword);
+
+        String userEmail = "eventtype.user@ams.lk";
+        String userPassword = "UserPassword123";
+        User user = seedUserWithRole(userEmail, userPassword, "TENANT_RESIDENT", AccountStatus.PENDING_VERIFICATION);
+
+        // Action 1: Status update (generates ACCOUNT_STATUS_CHANGED)
+        UpdateAccountStatusRequest statusReq = UpdateAccountStatusRequest.builder()
+                .status(AccountStatus.ACTIVE)
+                .build();
+        restTemplate.exchange(
+                "/api/v1/users/" + user.getId() + "/status",
+                HttpMethod.PATCH,
+                createAuthEntity(statusReq, adminToken),
+                AdminUserDetailResponse.class
+        );
+
+        // Action 2: Role assignment (generates ROLE_ASSIGNED)
+        AssignRoleRequest roleReq = AssignRoleRequest.builder().role("FINANCE_OFFICER").build();
+        restTemplate.exchange(
+                "/api/v1/users/" + user.getId() + "/roles",
+                HttpMethod.POST,
+                createAuthEntity(roleReq, adminToken),
+                AdminUserDetailResponse.class
+        );
+
+        // Query filtering strictly by eventType=ACCOUNT_STATUS_CHANGED
+        HttpEntity<Void> queryEntity = createAuthEntity(null, adminToken);
+        ResponseEntity<String> queryResponse = restTemplate.exchange(
+                "/api/v1/audit-logs?eventType=ACCOUNT_STATUS_CHANGED",
+                HttpMethod.GET,
+                queryEntity,
+                String.class
+        );
+
+        assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode root = objectMapper.readTree(queryResponse.getBody());
+        JsonNode content = root.get("content");
+        assertThat(content.isArray()).isTrue();
+        assertThat(content.size()).isGreaterThanOrEqualTo(1);
+
+        for (JsonNode node : content) {
+            assertThat(node.get("eventType").asText()).isEqualTo("ACCOUNT_STATUS_CHANGED");
+            assertThat(node.get("eventType").asText()).isNotEqualTo("ROLE_ASSIGNED");
+        }
+    }
+
+    @Test
+    @DisplayName("Filtering: Query audit logs filtered by subjectUserId ONLY returns that user's events")
+    void testAuditTrailQuery_filterBySubjectUserIdOnly_returnsOnlyTargetUserEvents() throws Exception {
+        String adminEmail = "subject.admin@ams.lk";
+        String adminPassword = "AdminPassword123";
+        seedAdminUser(adminEmail, adminPassword);
+        String adminToken = loginAndGetToken(adminEmail, adminPassword);
+
+        // User A
+        User userA = seedUserWithRole("user.a@ams.lk", "Pass12345", "TENANT_RESIDENT", AccountStatus.PENDING_VERIFICATION);
+        // User B
+        User userB = seedUserWithRole("user.b@ams.lk", "Pass12345", "TENANT_RESIDENT", AccountStatus.PENDING_VERIFICATION);
+
+        // Update status for User A
+        restTemplate.exchange(
+                "/api/v1/users/" + userA.getId() + "/status",
+                HttpMethod.PATCH,
+                createAuthEntity(UpdateAccountStatusRequest.builder().status(AccountStatus.ACTIVE).build(), adminToken),
+                AdminUserDetailResponse.class
+        );
+
+        // Update status for User B
+        restTemplate.exchange(
+                "/api/v1/users/" + userB.getId() + "/status",
+                HttpMethod.PATCH,
+                createAuthEntity(UpdateAccountStatusRequest.builder().status(AccountStatus.ACTIVE).build(), adminToken),
+                AdminUserDetailResponse.class
+        );
+
+        // Query filtering strictly by subjectUserId = userA.getId()
+        HttpEntity<Void> queryEntity = createAuthEntity(null, adminToken);
+        ResponseEntity<String> queryResponse = restTemplate.exchange(
+                "/api/v1/audit-logs?subjectUserId=" + userA.getId(),
+                HttpMethod.GET,
+                queryEntity,
+                String.class
+        );
+
+        assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode root = objectMapper.readTree(queryResponse.getBody());
+        JsonNode content = root.get("content");
+        assertThat(content.isArray()).isTrue();
+        assertThat(content.size()).isGreaterThanOrEqualTo(1);
+
+        for (JsonNode node : content) {
+            assertThat(node.get("subjectUserId").asText()).isEqualTo(userA.getId().toString());
+            assertThat(node.get("subjectUserId").asText()).isNotEqualTo(userB.getId().toString());
+        }
+    }
+
+    @Test
     @DisplayName("Authorization: Non-admin receives 403 Forbidden and unauthenticated receives 401 Unauthorized")
     void testAuditTrailQuery_nonAdminForbidden_andUnauthenticatedUnauthorized() {
         // Seed regular resident user
