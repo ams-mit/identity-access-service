@@ -22,4 +22,14 @@ jwt:
 auth:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
 

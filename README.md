@@ -97,3 +97,21 @@ To package and build the container image locally:
 ```bash
 docker build -t identity-access-service .
 ```
+
+The container image includes an integrated `HEALTHCHECK` checking `/actuator/health/liveness` every 30 seconds.
+
+## Health & Readiness Probes
+
+Spring Boot Actuator is configured with safe-by-default exposure (only `health` and `info` exposed over HTTP, details never leaked to unauthenticated callers).
+
+| Endpoint | Purpose | Checks |
+| :--- | :--- | :--- |
+| `GET /actuator/health/liveness` | Container liveness | Confirms the Spring Boot application context is running and responsive. Used by Docker/Kubernetes to restart crashed containers. |
+| `GET /actuator/health/readiness` | Traffic readiness | Verifies the service is ready to accept user traffic, validating active MySQL database connectivity via `DataSourceHealthIndicator`. |
+| `GET /actuator/health` | Overall health summary | High-level status indicator (`{"status":"UP"}`). |
+
+## Logging & Observability
+
+Logging is profile-aware via `logback-spring.xml`:
+- **Local (`!docker`)**: Human-readable, colorized standard console logging optimized for local developer experience.
+- **Docker (`docker`)**: Structured single-line JSON output to `stdout` powered by `logstash-logback-encoder` with standard fields (`timestamp`, `level`, `thread`, `logger`, `message`, `service`). All logs stream to container runtime log collectors (12-factor app principle); sensitive credentials/passwords are never logged.

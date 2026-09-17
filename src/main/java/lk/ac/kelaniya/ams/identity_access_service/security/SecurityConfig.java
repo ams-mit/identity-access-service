@@ -67,7 +67,9 @@ public class SecurityConfig {
                                 "/.well-known/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/v3/api-docs/**"
+                                "/v3/api-docs/**",
+                                "/actuator/health/**",
+                                "/actuator/info"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/logout").authenticated()
                         .requestMatchers("/internal/v1/**").hasAnyRole("SERVICE", "INTERNAL_SERVICE")
