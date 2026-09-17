@@ -20,7 +20,7 @@ class OpenApiConfigTest {
         // 1. Validate API Info
         assertThat(openAPI.getInfo()).isNotNull();
         assertThat(openAPI.getInfo().getTitle()).isEqualTo("Identity Access Service API");
-        assertThat(openAPI.getInfo().getVersion()).isEqualTo("0.2.0");
+        assertThat(openAPI.getInfo().getVersion()).isEqualTo("1.0.0");
         assertThat(openAPI.getInfo().getDescription()).contains("Apartment Management System (Group 1)");
 
         // 2. Validate Security Scheme Components
