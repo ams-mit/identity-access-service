@@ -26,15 +26,14 @@ public class JwtService {
      * Known and trusted microservice callers authorized to receive service tokens.
      */
     public static final Set<String> TRUSTED_SERVICES = Set.of(
+            "identity-access-service",
             "resident-management-service",
-            "billing-service",
-            "visitor-management-service",
-            "facility-management-service",
-            "maintenance-service",
-            "communication-service",
-            "notification-service",
-            "api-gateway",
-            "identity-access-service"
+            "property-unit-service",
+            "lease-occupancy-service",
+            "billing-payment-service",
+            "utility-charge-service",
+            "operations-service",
+            "community-service"
     );
 
     private final RsaKeyProvider rsaKeyProvider;

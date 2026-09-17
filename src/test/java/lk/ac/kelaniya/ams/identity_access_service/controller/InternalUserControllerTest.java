@@ -159,7 +159,7 @@ class InternalUserControllerTest {
         UUID nonExistentUserId = UUID.randomUUID();
         String serviceToken = "valid.service.token";
 
-        mockValidServiceToken(serviceToken, "billing-service");
+        mockValidServiceToken(serviceToken, "billing-payment-service");
 
         given(internalUserService.getUserForValidation(nonExistentUserId))
                 .willThrow(new UserNotFoundException("User not found with id: " + nonExistentUserId));

@@ -149,7 +149,18 @@ class JwtServiceTest {
     @Test
     @DisplayName("generateServiceToken creates valid RS256 token with type=service and no email/roles")
     void testGenerateServiceToken_validTrustedService() {
-        String serviceName = "resident-management-service";
+        assertThat(JwtService.TRUSTED_SERVICES).containsExactlyInAnyOrder(
+                "identity-access-service",
+                "resident-management-service",
+                "property-unit-service",
+                "lease-occupancy-service",
+                "billing-payment-service",
+                "utility-charge-service",
+                "operations-service",
+                "community-service"
+        );
+
+        String serviceName = "billing-payment-service";
 
         String token = jwtService.generateServiceToken(serviceName);
 
@@ -161,7 +172,7 @@ class JwtServiceTest {
         assertThat(parsedJws.getHeader().getAlgorithm()).isEqualTo("RS256");
 
         Claims payload = parsedJws.getPayload();
-        assertThat(payload.getSubject()).isEqualTo("resident-management-service");
+        assertThat(payload.getSubject()).isEqualTo("billing-payment-service");
         assertThat(payload.get("type", String.class)).isEqualTo("service");
         assertThat(payload.get("email")).isNull();
         assertThat(payload.get("roles")).isNull();
@@ -181,6 +192,12 @@ class JwtServiceTest {
         assertThatThrownBy(() -> jwtService.generateServiceToken("unknown-malicious-service"))
                 .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class)
                 .hasMessageContaining("Untrusted or unrecognized service");
+
+        assertThatThrownBy(() -> jwtService.generateServiceToken("billing-service"))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
+
+        assertThatThrownBy(() -> jwtService.generateServiceToken("api-gateway"))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
     }
 
     @Test
