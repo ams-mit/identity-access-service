@@ -61,6 +61,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/logout").authenticated()
+                        .requestMatchers("/internal/v1/**").hasAnyRole("SERVICE", "INTERNAL_SERVICE")
                         .anyRequest().authenticated()
                 );
 

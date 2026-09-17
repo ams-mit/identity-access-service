@@ -30,6 +30,11 @@ public class RsaKeyProperties {
     private long expirationSeconds = 1800;
 
     /**
+     * Expiration time in seconds for issued service-to-service JWTs (default: 300 / 5 minutes).
+     */
+    private long serviceTokenExpirationSeconds = 300;
+
+    /**
      * Key ID (kid) associated with the RSA key pair for JWKS and JWT headers.
      */
     private String keyId = "ams-identity-key-1";

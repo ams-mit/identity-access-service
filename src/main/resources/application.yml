@@ -18,6 +18,7 @@ jwt:
   private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
   public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
   expiration-seconds: 1800
+  service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
 auth:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}
