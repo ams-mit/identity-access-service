@@ -106,8 +106,14 @@ public abstract class AbstractIntegrationTest {
     @Autowired
     protected PasswordEncoder passwordEncoder;
 
+    @Autowired(required = false)
+    protected lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingService rateLimitingService;
+
     @AfterEach
     void cleanDatabase() {
+        if (rateLimitingService != null) {
+            rateLimitingService.reset();
+        }
         passwordResetTokenRepository.deleteAll();
         userRoleRepository.deleteAll();
         userRepository.deleteAll();
