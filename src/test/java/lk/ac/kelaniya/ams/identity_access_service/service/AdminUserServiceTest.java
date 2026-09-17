@@ -16,6 +16,7 @@ import lk.ac.kelaniya.ams.identity_access_service.exception.SelfRoleAssignmentEx
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
 import lk.ac.kelaniya.ams.identity_access_service.repository.RoleRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -56,6 +57,9 @@ class AdminUserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private AdminUserService adminUserService;
@@ -215,6 +219,14 @@ class AdminUserServiceTest {
         assertThat(result.getRoles()).containsExactly("OWNER");
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         verify(userRepository).save(user);
+        verify(auditService).record(
+                AuditEventType.ACCOUNT_STATUS_CHANGED,
+                userId,
+                adminId,
+                "PENDING_VERIFICATION",
+                "ACTIVE",
+                null
+        );
     }
 
     @Test
@@ -500,6 +512,14 @@ class AdminUserServiceTest {
         assertThat(response.getRoles()).containsExactly("FINANCE_OFFICER");
         assertThat(user.getUserRoles()).hasSize(1);
         verify(userRepository).save(user);
+        verify(auditService).record(
+                AuditEventType.ROLE_ASSIGNED,
+                userId,
+                adminId,
+                null,
+                "FINANCE_OFFICER",
+                null
+        );
     }
 
     @Test
@@ -688,6 +708,14 @@ class AdminUserServiceTest {
         assertThat(response.getRoles()).containsExactly("TENANT_RESIDENT");
         assertThat(user.getUserRoles()).hasSize(1);
         verify(userRepository).save(user);
+        verify(auditService).record(
+                AuditEventType.ROLE_REMOVED,
+                userId,
+                adminId,
+                "FINANCE_OFFICER",
+                null,
+                null
+        );
     }
 
     @Test
@@ -809,6 +837,14 @@ class AdminUserServiceTest {
         assertThat(savedUser.getRequestedRole()).isNull();
         assertThat(savedUser.getFailedAttemptCount()).isZero();
         assertThat(savedUser.getUserRoles()).isEmpty();
+        verify(auditService).record(
+                AuditEventType.USER_CREATED_BY_ADMIN,
+                expectedId,
+                null,
+                null,
+                "jane.doe@ams.lk",
+                null
+        );
     }
 
     @Test

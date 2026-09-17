@@ -209,7 +209,7 @@ public class AdminUserService {
                 adminId,
                 currentStatus.name(),
                 targetStatus.name(),
-                reason
+                reason.isEmpty() ? null : reason
         );
 
         return toDetailResponse(savedUser);

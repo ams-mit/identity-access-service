@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
@@ -36,6 +37,9 @@ class UserServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private UserService userService;
@@ -176,6 +180,14 @@ class UserServiceTest {
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
 
         verify(userRepository).save(user);
+        verify(auditService).record(
+                AuditEventType.PASSWORD_CHANGED,
+                userId,
+                userId,
+                null,
+                null,
+                "User self-service password change"
+        );
     }
 
     @Test
