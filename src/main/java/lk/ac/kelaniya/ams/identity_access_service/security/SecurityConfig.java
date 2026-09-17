@@ -1,5 +1,8 @@
 package lk.ac.kelaniya.ams.identity_access_service.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingFilter;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +29,12 @@ public class SecurityConfig {
 
     @Autowired(required = false)
     private JwtService jwtService;
+
+    @Autowired(required = false)
+    private RateLimitingService rateLimitingService;
+
+    @Autowired(required = false)
+    private ObjectMapper objectMapper;
 
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
@@ -64,6 +73,10 @@ public class SecurityConfig {
                         .requestMatchers("/internal/v1/**").hasAnyRole("SERVICE", "INTERNAL_SERVICE")
                         .anyRequest().authenticated()
                 );
+
+        if (rateLimitingService != null && objectMapper != null) {
+            http.addFilterBefore(new RateLimitingFilter(rateLimitingService, objectMapper), UsernamePasswordAuthenticationFilter.class);
+        }
 
         if (jwtService != null) {
             http.addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
