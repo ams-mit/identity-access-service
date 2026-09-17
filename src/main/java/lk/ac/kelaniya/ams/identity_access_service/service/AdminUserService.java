@@ -20,6 +20,7 @@ import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.specification.UserSpecifications;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -32,6 +33,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import java.util.UUID;
 
 /**
@@ -39,12 +41,46 @@ import java.util.UUID;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AdminUserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
+
+    @Autowired
+    public AdminUserService(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder,
+            AuditService auditService
+    ) {
+        this.userRepository = userRepository;
+        this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.auditService = auditService;
+    }
+
+    public AdminUserService(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder
+    ) {
+        this(userRepository, roleRepository, passwordEncoder, null);
+    }
+
+    private void recordAudit(
+            AuditEventType type,
+            UUID subjectUserId,
+            UUID actorUserId,
+            String oldValue,
+            String newValue,
+            String reason
+    ) {
+        if (auditService != null) {
+            auditService.record(type, subjectUserId, actorUserId, oldValue, newValue, reason);
+        }
+    }
 
     public static final Set<String> VALID_ROLES = Set.of(
             "SYSTEM_ADMINISTRATOR",
@@ -167,6 +203,15 @@ public class AdminUserService {
         user.setAccountStatus(targetStatus);
         User savedUser = userRepository.save(user);
 
+        recordAudit(
+                AuditEventType.ACCOUNT_STATUS_CHANGED,
+                savedUser.getId(),
+                adminId,
+                currentStatus.name(),
+                targetStatus.name(),
+                reason.isEmpty() ? null : reason
+        );
+
         return toDetailResponse(savedUser);
     }
 
@@ -218,6 +263,15 @@ public class AdminUserService {
         log.info("AUDIT: Role '{}' assigned to user id: {} by admin id: {}", normalizedRole, userId, adminId);
         User savedUser = userRepository.save(user);
 
+        recordAudit(
+                AuditEventType.ROLE_ASSIGNED,
+                savedUser.getId(),
+                adminId,
+                null,
+                normalizedRole,
+                null
+        );
+
         return toDetailResponse(savedUser);
     }
 
@@ -267,6 +321,15 @@ public class AdminUserService {
         log.info("AUDIT: Role '{}' removed from user id: {} by admin id: {}", normalizedRole, userId, adminId);
         User savedUser = userRepository.save(user);
 
+        recordAudit(
+                AuditEventType.ROLE_REMOVED,
+                savedUser.getId(),
+                adminId,
+                normalizedRole,
+                null,
+                null
+        );
+
         return toDetailResponse(savedUser);
     }
 
@@ -281,6 +344,18 @@ public class AdminUserService {
      */
     @Transactional
     public AdminCreateUserResponse createUser(AdminCreateUserRequest request) {
+        return createUser(request, null);
+    }
+
+    /**
+     * Administratively creates a new user account with ACTIVE status, temporary password, and records auditing.
+     *
+     * @param request account creation payload
+     * @param adminId authenticated administrator performing creation
+     * @return creation response
+     */
+    @Transactional
+    public AdminCreateUserResponse createUser(AdminCreateUserRequest request, UUID adminId) {
         String email = request.getEmail().trim().toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmail(email)) {
             log.warn("Admin user creation rejected: duplicate email address '{}'", email);
@@ -309,6 +384,15 @@ public class AdminUserService {
         User savedUser = userRepository.save(user);
         log.info("AUDIT: Admin-created user account successfully saved with id: {} and email: {}",
                 savedUser.getId(), savedUser.getEmail());
+
+        recordAudit(
+                AuditEventType.USER_CREATED_BY_ADMIN,
+                savedUser.getId(),
+                adminId,
+                null,
+                savedUser.getEmail(),
+                null
+        );
 
         return AdminCreateUserResponse.builder()
                 .userId(savedUser.getId())

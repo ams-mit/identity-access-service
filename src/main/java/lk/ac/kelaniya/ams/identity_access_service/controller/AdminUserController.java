@@ -98,9 +98,11 @@ public class AdminUserController {
             )
     })
     public ResponseEntity<AdminCreateUserResponse> createUser(
-            @Valid @RequestBody AdminCreateUserRequest request
+            @Valid @RequestBody AdminCreateUserRequest request,
+            @AuthenticationPrincipal UserPrincipal principal
     ) {
-        AdminCreateUserResponse response = adminUserService.createUser(request);
+        UUID adminId = principal != null ? principal.getUserId() : null;
+        AdminCreateUserResponse response = adminUserService.createUser(request, adminId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

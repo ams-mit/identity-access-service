@@ -8,6 +8,7 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.MessageResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import lk.ac.kelaniya.ams.identity_access_service.entity.PasswordResetToken;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Service managing user registration, authentication, and password reset lifecycle.
@@ -59,6 +61,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final AuditService auditService;
 
     @Value("${auth.password-reset.token-validity-minutes:30}")
     private long tokenValidityMinutes = 30;
@@ -68,12 +71,23 @@ public class AuthService {
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            PasswordResetTokenRepository passwordResetTokenRepository
+            PasswordResetTokenRepository passwordResetTokenRepository,
+            AuditService auditService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
+        this.auditService = auditService;
+    }
+
+    public AuthService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            PasswordResetTokenRepository passwordResetTokenRepository
+    ) {
+        this(userRepository, passwordEncoder, jwtService, passwordResetTokenRepository, null);
     }
 
     public AuthService(
@@ -81,7 +95,20 @@ public class AuthService {
             PasswordEncoder passwordEncoder,
             JwtService jwtService
     ) {
-        this(userRepository, passwordEncoder, jwtService, null);
+        this(userRepository, passwordEncoder, jwtService, null, null);
+    }
+
+    private void recordAudit(
+            AuditEventType type,
+            UUID subjectUserId,
+            UUID actorUserId,
+            String oldValue,
+            String newValue,
+            String reason
+    ) {
+        if (auditService != null) {
+            auditService.record(type, subjectUserId, actorUserId, oldValue, newValue, reason);
+        }
     }
 
     public void setTokenValidityMinutes(long tokenValidityMinutes) {
@@ -130,6 +157,15 @@ public class AuthService {
 
         log.info("User registered successfully with id: {}", savedUser.getId());
 
+        recordAudit(
+                AuditEventType.USER_REGISTERED,
+                savedUser.getId(),
+                null,
+                null,
+                savedUser.getAccountStatus().name(),
+                "User self-registration"
+        );
+
         return RegisterResponse.builder()
                 .userId(savedUser.getId())
                 .email(savedUser.getEmail())
@@ -160,6 +196,14 @@ public class AuthService {
 
         if (userOptional.isEmpty()) {
             log.warn("Authentication failed: user not found for email: {}", email);
+            recordAudit(
+                    AuditEventType.LOGIN_FAILED,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "User not found for email: " + email
+            );
             throw new InvalidCredentialsException("Invalid email or password.");
         }
 
@@ -168,6 +212,14 @@ public class AuthService {
         // 1. Check lockout status BEFORE verifying password to avoid wasted BCrypt computation
         if (user.isAccountLocked()) {
             log.warn("Authentication rejected: account locked until {} for user id: {}", user.getLockedUntil(), user.getId());
+            recordAudit(
+                    AuditEventType.LOGIN_FAILED,
+                    user.getId(),
+                    null,
+                    null,
+                    null,
+                    "Account locked until " + user.getLockedUntil()
+            );
             throw new AccountLockedException("Account is temporarily locked. Try again after " + user.getLockedUntil() + ".", user.getLockedUntil());
         }
 
@@ -179,9 +231,33 @@ public class AuthService {
                 user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
                 log.warn("Authentication failed: max attempts reached for user id: {}. Locked until {}",
                         user.getId(), user.getLockedUntil());
+                recordAudit(
+                        AuditEventType.ACCOUNT_LOCKED,
+                        user.getId(),
+                        null,
+                        null,
+                        "LOCKED",
+                        "Max failed authentication attempts reached"
+                );
+                recordAudit(
+                        AuditEventType.LOGIN_FAILED,
+                        user.getId(),
+                        null,
+                        null,
+                        null,
+                        "Invalid credentials - account locked"
+                );
             } else {
                 log.warn("Authentication failed: invalid password for user id: {}. Attempt {} of {}",
                         user.getId(), attempts, MAX_FAILED_ATTEMPTS);
+                recordAudit(
+                        AuditEventType.LOGIN_FAILED,
+                        user.getId(),
+                        null,
+                        null,
+                        null,
+                        "Invalid credentials. Attempt " + attempts + " of " + MAX_FAILED_ATTEMPTS
+                );
             }
             userRepository.save(user);
             throw new InvalidCredentialsException("Invalid email or password.");
@@ -191,18 +267,23 @@ public class AuthService {
         AccountStatus status = user.getAccountStatus();
         if (status == AccountStatus.PENDING_VERIFICATION) {
             log.warn("Authentication rejected: account pending verification for user id: {}", user.getId());
+            recordAudit(AuditEventType.LOGIN_FAILED, user.getId(), null, null, null, "Account pending verification");
             throw new AccountStatusException("ACCOUNT_PENDING_VERIFICATION", "Account is pending verification. Please verify your email before logging in.");
         } else if (status == AccountStatus.SUSPENDED) {
             log.warn("Authentication rejected: account suspended for user id: {}", user.getId());
+            recordAudit(AuditEventType.LOGIN_FAILED, user.getId(), null, null, null, "Account suspended");
             throw new AccountStatusException("ACCOUNT_SUSPENDED", "Account has been suspended. Please contact support.");
         } else if (status == AccountStatus.DEACTIVATED) {
             log.warn("Authentication rejected: account deactivated for user id: {}", user.getId());
+            recordAudit(AuditEventType.LOGIN_FAILED, user.getId(), null, null, null, "Account deactivated");
             throw new AccountStatusException("ACCOUNT_DEACTIVATED", "Account has been deactivated. Please contact support.");
         } else if (status == AccountStatus.REJECTED) {
             log.warn("Authentication rejected: account rejected for user id: {}", user.getId());
+            recordAudit(AuditEventType.LOGIN_FAILED, user.getId(), null, null, null, "Account rejected");
             throw new AccountStatusException("ACCOUNT_REJECTED", "Account registration has been rejected. Please contact support.");
         } else if (status != AccountStatus.ACTIVE) {
             log.warn("Authentication rejected: non-active account status {} for user id: {}", status, user.getId());
+            recordAudit(AuditEventType.LOGIN_FAILED, user.getId(), null, null, null, "Account non-active status: " + status);
             throw new AccountStatusException("ACCOUNT_INACTIVE", "Account is not active.");
         }
 
@@ -224,6 +305,15 @@ public class AuthService {
         long expiresIn = jwtService.getExpirationSeconds();
 
         log.info("User authenticated successfully with id: {}", user.getId());
+
+        recordAudit(
+                AuditEventType.LOGIN_SUCCESS,
+                user.getId(),
+                user.getId(),
+                null,
+                null,
+                null
+        );
 
         // Note: mustChangePassword is surfaced to notify frontend clients to force a password-change
         // screen on first login for admin-created accounts. Restricting/blocking access to other endpoints
@@ -357,6 +447,15 @@ public class AuthService {
         passwordResetTokenRepository.invalidateAllActiveTokensForUser(user, now);
 
         log.info("Password reset completed successfully for user id: {}", user.getId());
+
+        recordAudit(
+                AuditEventType.PASSWORD_RESET,
+                user.getId(),
+                null,
+                null,
+                null,
+                "Password reset completed via token"
+        );
 
         return MessageResponse.builder()
                 .message(RESET_PASSWORD_SUCCESS_MESSAGE)

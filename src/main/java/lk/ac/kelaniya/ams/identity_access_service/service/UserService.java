@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -29,15 +30,21 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final AuditService auditService;
 
     @Autowired
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, AuditService auditService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.auditService = auditService;
+    }
+
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+        this(userRepository, passwordEncoder, null);
     }
 
     public UserService(UserRepository userRepository) {
-        this(userRepository, null);
+        this(userRepository, null, null);
     }
 
     /**
@@ -112,5 +119,16 @@ public class UserService {
         userRepository.save(user);
 
         log.info("Password changed successfully and mustChangePassword cleared for user id: {}", userId);
+
+        if (auditService != null) {
+            auditService.record(
+                    AuditEventType.PASSWORD_CHANGED,
+                    userId,
+                    userId,
+                    null,
+                    null,
+                    "User self-service password change"
+            );
+        }
     }
 }

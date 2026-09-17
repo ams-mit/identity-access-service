@@ -42,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -60,6 +61,9 @@ class AuthServiceTest {
 
     @Mock
     private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private AuthService authService;
@@ -116,6 +120,14 @@ class AuthServiceTest {
         assertThat(savedUser.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
         assertThat(savedUser.getRequestedRole()).isEqualTo("OWNER");
         assertThat(savedUser.getFailedAttemptCount()).isZero();
+        verify(auditService).record(
+                AuditEventType.USER_REGISTERED,
+                expectedId,
+                null,
+                null,
+                "PENDING_VERIFICATION",
+                "User self-registration"
+        );
     }
 
     @ParameterizedTest
@@ -221,6 +233,14 @@ class AuthServiceTest {
         assertThat(response.getUser().getUserId()).isEqualTo(userId);
         assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
         assertThat(response.getUser().getRoles()).containsExactly("RESIDENT");
+        verify(auditService).record(
+                AuditEventType.LOGIN_SUCCESS,
+                userId,
+                userId,
+                null,
+                null,
+                null
+        );
     }
 
     @Test
@@ -254,6 +274,14 @@ class AuthServiceTest {
                 .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Invalid email or password.");
 
+        verify(auditService).record(
+                AuditEventType.LOGIN_FAILED,
+                userId,
+                null,
+                null,
+                null,
+                "Invalid credentials. Attempt 1 of 5"
+        );
         verify(jwtService, never()).generateToken(any(), any(), any());
     }
 
@@ -391,6 +419,23 @@ class AuthServiceTest {
         assertThat(savedUser.getLockedUntil()).isNotNull();
         assertThat(savedUser.getLockedUntil()).isAfter(before);
         assertThat(savedUser.isAccountLocked()).isTrue();
+
+        verify(auditService).record(
+                AuditEventType.ACCOUNT_LOCKED,
+                userId,
+                null,
+                null,
+                "LOCKED",
+                "Max failed authentication attempts reached"
+        );
+        verify(auditService).record(
+                AuditEventType.LOGIN_FAILED,
+                userId,
+                null,
+                null,
+                null,
+                "Invalid credentials - account locked"
+        );
     }
 
     @Test
@@ -838,6 +883,14 @@ class AuthServiceTest {
         assertThat(resetToken.getUsedAt()).isNotNull();
         verify(passwordResetTokenRepository).save(resetToken);
         verify(passwordResetTokenRepository).invalidateAllActiveTokensForUser(eq(user), any(Instant.class));
+        verify(auditService).record(
+                AuditEventType.PASSWORD_RESET,
+                user.getId(),
+                null,
+                null,
+                null,
+                "Password reset completed via token"
+        );
     }
 
     @Test

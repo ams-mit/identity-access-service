@@ -843,7 +843,7 @@ class AdminUserControllerTest {
                 .mustChangePassword(true)
                 .build();
 
-        given(adminUserService.createUser(any(AdminCreateUserRequest.class))).willReturn(response);
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any())).willReturn(response);
 
         String json = "{"
                 + "\"firstName\":\"Jane\","
@@ -872,7 +872,7 @@ class AdminUserControllerTest {
         String token = "valid.sysadmin.token";
         mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
 
-        given(adminUserService.createUser(any(AdminCreateUserRequest.class)))
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any()))
                 .willThrow(new DuplicateEmailException("Email already in use"));
 
         String json = "{"
