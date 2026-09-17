@@ -41,7 +41,9 @@ public class InternalUserController {
     @PreAuthorize("hasRole('SERVICE')")
     @Operation(
             summary = "Validate and retrieve user authorization details (Internal)",
-            description = "Retrieves minimal authorization data (userId, accountStatus, roles) for a specific user ID. Restricted exclusively to internal microservices presenting a valid RS256 Service JWT. Normal user tokens (including administrators) are forbidden.",
+            description = "Retrieves minimal authorization data (userId, accountStatus, roles) for a specific user ID. "
+                    + "Restricted exclusively to internal microservices presenting a valid RS256 Service JWT (containing a 'service' claim for an approved caller and granting the ROLE_SERVICE authority). "
+                    + "Regular user Bearer tokens (including SYSTEM_ADMINISTRATOR tokens) are strictly forbidden and rejected with HTTP 403.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
