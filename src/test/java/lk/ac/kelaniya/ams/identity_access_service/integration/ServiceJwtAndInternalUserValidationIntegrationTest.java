@@ -136,7 +136,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     @Test
     @DisplayName("GET /internal/v1/users/{userId} for non-existent user returns 404 NOT FOUND")
     void testInternalUserEndpoint_nonExistentUser_returns404NotFound() {
-        String serviceToken = jwtService.generateServiceToken("billing-service");
+        String serviceToken = jwtService.generateServiceToken("billing-payment-service");
         UUID nonExistentUserId = UUID.randomUUID();
         HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
 
@@ -153,7 +153,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     @Test
     @DisplayName("Service token is denied from accessing user profile endpoint GET /api/v1/users/me")
     void testServiceToken_deniedFromUserProfileEndpoint() {
-        String serviceToken = jwtService.generateServiceToken("visitor-management-service");
+        String serviceToken = jwtService.generateServiceToken("operations-service");
         HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
 
         ResponseEntity<String> response = restTemplate.exchange(
