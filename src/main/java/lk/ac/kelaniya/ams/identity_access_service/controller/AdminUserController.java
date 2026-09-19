@@ -222,6 +222,7 @@ public class AdminUserController {
                     + "- **SUSPENDED** -> **ACTIVE** (reason optional), **DEACTIVATED** (reason required)\n\n"
                     + "All other status transitions are invalid and rejected with HTTP 400 (`INVALID_STATUS_TRANSITION`).\n"
                     + "A non-blank reason is strictly mandatory when transitioning to `SUSPENDED`, `DEACTIVATED`, or `REJECTED`.\n\n"
+                    + "- **Email Notifications**: Transitions from `PENDING_VERIFICATION` to `ACTIVE` (approval) or `REJECTED` (rejection with reason) trigger an automated plain-text email notification to the applicant. Email delivery is best-effort and non-blocking: delivery failure will not fail or roll back the status update transaction. No emails are sent for other status transitions (e.g. suspend or deactivate).\n\n"
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
