@@ -36,6 +36,9 @@ class IdentityAccessServiceApplicationTests {
 	@MockBean
 	private Flyway flyway;
 
+	@MockBean
+	private org.springframework.mail.javamail.JavaMailSender javaMailSender;
+
 	@DynamicPropertySource
 	static void rsaKeyProperties(DynamicPropertyRegistry registry) throws Exception {
 		Path tempDir = Files.createTempDirectory("ams-test-keys-");
@@ -46,6 +49,11 @@ class IdentityAccessServiceApplicationTests {
 
 		registry.add("jwt.private-key-path", () -> privateKeyFile.toUri().toString());
 		registry.add("jwt.public-key-path", () -> publicKeyFile.toUri().toString());
+
+		registry.add("spring.mail.host", () -> "localhost");
+		registry.add("spring.mail.port", () -> "2525");
+		registry.add("spring.mail.username", () -> "test-smtp-user");
+		registry.add("spring.mail.password", () -> "test-smtp-password");
 	}
 
 	@Test

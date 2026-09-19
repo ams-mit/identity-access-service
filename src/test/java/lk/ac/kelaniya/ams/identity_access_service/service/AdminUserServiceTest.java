@@ -41,10 +41,13 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class AdminUserServiceTest {
@@ -60,6 +63,9 @@ class AdminUserServiceTest {
 
     @Mock
     private AuditService auditService;
+
+    @Mock
+    private EmailService emailService;
 
     @InjectMocks
     private AdminUserService adminUserService;
@@ -190,7 +196,7 @@ class AdminUserServiceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> ACTIVE succeeds without reason and preserves roles")
+    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> ACTIVE succeeds without reason and dispatches approval email")
     void testUpdateStatus_pendingToActive_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
@@ -198,6 +204,8 @@ class AdminUserServiceTest {
         User user = User.builder()
                 .id(userId)
                 .email("user@ams.lk")
+                .firstName("John")
+                .lastName("Doe")
                 .accountStatus(AccountStatus.PENDING_VERIFICATION)
                 .requestedRole("OWNER")
                 .userRoles(new HashSet<>())
@@ -227,16 +235,19 @@ class AdminUserServiceTest {
                 "ACTIVE",
                 null
         );
+        verify(emailService).sendRegistrationOutcomeEmail("user@ams.lk", "John", true, null);
     }
 
     @Test
-    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> REJECTED succeeds with reason")
+    @DisplayName("updateAccountStatus: PENDING_VERIFICATION -> REJECTED succeeds with reason and dispatches rejection email")
     void testUpdateStatus_pendingToRejected_withReason_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
         User user = User.builder()
                 .id(userId)
                 .email("fraud@ams.lk")
+                .firstName("Jane")
+                .lastName("Smith")
                 .accountStatus(AccountStatus.PENDING_VERIFICATION)
                 .requestedRole("TENANT_RESIDENT")
                 .userRoles(new HashSet<>())
@@ -256,10 +267,74 @@ class AdminUserServiceTest {
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
         verify(userRepository).save(user);
+        verify(emailService).sendRegistrationOutcomeEmail(
+                "fraud@ams.lk", "Jane", false, "Fraudulent identity documents submitted"
+        );
     }
 
     @Test
-    @DisplayName("updateAccountStatus: ACTIVE -> SUSPENDED succeeds with reason")
+    @DisplayName("updateAccountStatus: emailService throwing exception does not prevent ACTIVE status change from completing (fail-safe)")
+    void testUpdateStatus_pendingToActive_emailFailure_completesSuccessfully() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("user@ams.lk")
+                .firstName("John")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new RuntimeException("SMTP server connection timeout"))
+                .when(emailService).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: emailService throwing exception does not prevent REJECTED status change from completing (fail-safe)")
+    void testUpdateStatus_pendingToRejected_emailFailure_completesSuccessfully() {
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("user@ams.lk")
+                .firstName("John")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new RuntimeException("SMTP authentication failed"))
+                .when(emailService).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.REJECTED)
+                        .reason("Invalid ID documentation")
+                        .build();
+
+        AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: ACTIVE -> SUSPENDED succeeds with reason and does NOT dispatch email")
     void testUpdateStatus_activeToSuspended_withReason_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
@@ -283,10 +358,11 @@ class AdminUserServiceTest {
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
+        verifyNoInteractions(emailService);
     }
 
     @Test
-    @DisplayName("updateAccountStatus: SUSPENDED -> ACTIVE succeeds (reactivation)")
+    @DisplayName("updateAccountStatus: SUSPENDED -> ACTIVE succeeds (reactivation) and does NOT dispatch email")
     void testUpdateStatus_suspendedToActive_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
@@ -308,10 +384,11 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        verifyNoInteractions(emailService);
     }
 
     @Test
-    @DisplayName("updateAccountStatus: ACTIVE -> DEACTIVATED succeeds with reason")
+    @DisplayName("updateAccountStatus: ACTIVE -> DEACTIVATED succeeds with reason and does NOT dispatch email")
     void testUpdateStatus_activeToDeactivated_withReason_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
@@ -334,10 +411,11 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+        verifyNoInteractions(emailService);
     }
 
     @Test
-    @DisplayName("updateAccountStatus: SUSPENDED -> DEACTIVATED succeeds with reason")
+    @DisplayName("updateAccountStatus: SUSPENDED -> DEACTIVATED succeeds with reason and does NOT dispatch email")
     void testUpdateStatus_suspendedToDeactivated_withReason_success() {
         UUID userId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
@@ -360,6 +438,7 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+        verifyNoInteractions(emailService);
     }
 
     @Test
