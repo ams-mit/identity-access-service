@@ -34,6 +34,9 @@ auth:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}
 management:
+  health:
+    mail:
+      enabled: false
   endpoints:
     web:
       exposure:
