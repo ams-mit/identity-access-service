@@ -38,6 +38,11 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.mail.MailAuthenticationException;
+import org.springframework.mail.MailSendException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +50,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -334,6 +340,83 @@ class AdminUserServiceTest {
     }
 
     @Test
+    @DisplayName("updateAccountStatus: if mocked JavaMailSender throws exception, updateAccountStatus still completes successfully and persists ACTIVE status")
+    void testUpdateStatus_pendingToActive_javaMailSenderThrows_completesSuccessfullyAndPersistsStatus() {
+        JavaMailSender mockMailSender = mock(JavaMailSender.class);
+        doThrow(new MailSendException("SMTP server connection timeout"))
+                .when(mockMailSender).send(any(SimpleMailMessage.class));
+
+        EmailService realEmailService = new EmailService(mockMailSender, "noreply@ams.lk");
+        AdminUserService serviceWithRealEmail = new AdminUserService(
+                userRepository, roleRepository, passwordEncoder, auditService, realEmailService
+        );
+
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("user@ams.lk")
+                .firstName("John")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.ACTIVE)
+                        .build();
+
+        AdminUserDetailResponse result = serviceWithRealEmail.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        verify(userRepository).save(user);
+        verify(mockMailSender).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
+    @DisplayName("updateAccountStatus: if mocked JavaMailSender throws exception, updateAccountStatus still completes successfully and persists REJECTED status")
+    void testUpdateStatus_pendingToRejected_javaMailSenderThrows_completesSuccessfullyAndPersistsStatus() {
+        JavaMailSender mockMailSender = mock(JavaMailSender.class);
+        doThrow(new MailAuthenticationException("SMTP authentication failed"))
+                .when(mockMailSender).send(any(SimpleMailMessage.class));
+
+        EmailService realEmailService = new EmailService(mockMailSender, "noreply@ams.lk");
+        AdminUserService serviceWithRealEmail = new AdminUserService(
+                userRepository, roleRepository, passwordEncoder, auditService, realEmailService
+        );
+
+        UUID userId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("user@ams.lk")
+                .firstName("Jane")
+                .accountStatus(AccountStatus.PENDING_VERIFICATION)
+                .userRoles(new HashSet<>())
+                .build();
+
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
+        given(userRepository.save(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest request =
+                lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatusRequest.builder()
+                        .status(AccountStatus.REJECTED)
+                        .reason("Identity mismatch")
+                        .build();
+
+        AdminUserDetailResponse result = serviceWithRealEmail.updateAccountStatus(userId, request, adminId);
+
+        assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.REJECTED);
+        verify(userRepository).save(user);
+        verify(mockMailSender).send(any(SimpleMailMessage.class));
+    }
+
+    @Test
     @DisplayName("updateAccountStatus: ACTIVE -> SUSPENDED succeeds with reason and does NOT dispatch email")
     void testUpdateStatus_activeToSuspended_withReason_success() {
         UUID userId = UUID.randomUUID();
@@ -358,6 +441,7 @@ class AdminUserServiceTest {
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
         assertThat(user.getAccountStatus()).isEqualTo(AccountStatus.SUSPENDED);
+        verify(emailService, never()).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
         verifyNoInteractions(emailService);
     }
 
@@ -384,6 +468,7 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+        verify(emailService, never()).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
         verifyNoInteractions(emailService);
     }
 
@@ -411,6 +496,7 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+        verify(emailService, never()).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
         verifyNoInteractions(emailService);
     }
 
@@ -438,6 +524,7 @@ class AdminUserServiceTest {
         AdminUserDetailResponse result = adminUserService.updateAccountStatus(userId, request, adminId);
 
         assertThat(result.getAccountStatus()).isEqualTo(AccountStatus.DEACTIVATED);
+        verify(emailService, never()).sendRegistrationOutcomeEmail(any(), any(), anyBoolean(), any());
         verifyNoInteractions(emailService);
     }
 
