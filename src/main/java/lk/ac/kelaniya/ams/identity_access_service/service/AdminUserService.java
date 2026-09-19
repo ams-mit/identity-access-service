@@ -47,18 +47,30 @@ public class AdminUserService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuditService auditService;
+    private final EmailService emailService;
 
     @Autowired
     public AdminUserService(
             UserRepository userRepository,
             RoleRepository roleRepository,
             PasswordEncoder passwordEncoder,
-            AuditService auditService
+            AuditService auditService,
+            EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.passwordEncoder = passwordEncoder;
         this.auditService = auditService;
+        this.emailService = emailService;
+    }
+
+    public AdminUserService(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder,
+            AuditService auditService
+    ) {
+        this(userRepository, roleRepository, passwordEncoder, auditService, null);
     }
 
     public AdminUserService(
@@ -66,7 +78,7 @@ public class AdminUserService {
             RoleRepository roleRepository,
             PasswordEncoder passwordEncoder
     ) {
-        this(userRepository, roleRepository, passwordEncoder, null);
+        this(userRepository, roleRepository, passwordEncoder, null, null);
     }
 
     private void recordAudit(
@@ -211,6 +223,18 @@ public class AdminUserService {
                 targetStatus.name(),
                 reason.isEmpty() ? null : reason
         );
+
+        if (emailService != null && currentStatus == AccountStatus.PENDING_VERIFICATION) {
+            try {
+                if (targetStatus == AccountStatus.ACTIVE) {
+                    emailService.sendRegistrationOutcomeEmail(savedUser.getEmail(), savedUser.getFirstName(), true, null);
+                } else if (targetStatus == AccountStatus.REJECTED) {
+                    emailService.sendRegistrationOutcomeEmail(savedUser.getEmail(), savedUser.getFirstName(), false, reason);
+                }
+            } catch (Exception e) {
+                log.error("Failed to dispatch registration outcome email for user id {}: {}", savedUser.getId(), e.getMessage(), e);
+            }
+        }
 
         return toDetailResponse(savedUser);
     }

@@ -20,6 +20,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -81,7 +83,15 @@ public abstract class AbstractIntegrationTest {
 
         registry.add("jwt.private-key-path", () -> TEMP_PRIVATE_KEY.toUri().toString());
         registry.add("jwt.public-key-path", () -> TEMP_PUBLIC_KEY.toUri().toString());
+
+        registry.add("spring.mail.host", () -> "localhost");
+        registry.add("spring.mail.port", () -> "2525");
+        registry.add("spring.mail.username", () -> "test-smtp-user");
+        registry.add("spring.mail.password", () -> "test-smtp-password");
     }
+
+    @MockBean
+    protected JavaMailSender javaMailSender;
 
     @Autowired
     protected TestRestTemplate restTemplate;
