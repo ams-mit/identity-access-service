@@ -121,7 +121,7 @@ public class JwtService {
                 .claim("type", "service")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
-                .signWith(rsaKeyProvider.getPrivateKey(), Jwts.SIG.RS256)
+                .signWith(rsaKeyProvider.getServicePrivateKey(), Jwts.SIG.RS256)
                 .compact();
     }
 

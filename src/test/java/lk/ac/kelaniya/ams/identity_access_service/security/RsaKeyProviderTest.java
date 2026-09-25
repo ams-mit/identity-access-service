@@ -201,4 +201,25 @@ class RsaKeyProviderTest {
         assertThat(provider.getGatewayPublicKey()).isNotNull();
         assertThat(provider.getGatewayPublicKey()).isNotEqualTo(provider.getPublicKey());
     }
+
+    @Test
+    @DisplayName("Should load service private key when configured, or fall back to user private key when unset")
+    void testLoadServicePrivateKey() throws Exception {
+        properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
+        properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+
+        provider.init();
+        assertThat(provider.getServicePrivateKey()).isEqualTo(provider.getPrivateKey());
+
+        // Now configure a distinct service private key
+        KeyPair svcKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path svcPubKeyFile = tempDir.resolve("svc_pub.pem");
+        Path svcPrivKeyFile = tempDir.resolve("svc_priv.pem");
+        RsaKeyPairGenerator.writeKeys(svcKeyPair, svcPrivKeyFile, svcPubKeyFile);
+
+        properties.setServicePrivateKeyPath(svcPrivKeyFile.toUri().toString());
+        provider.init();
+        assertThat(provider.getServicePrivateKey()).isNotNull();
+        assertThat(provider.getServicePrivateKey()).isNotEqualTo(provider.getPrivateKey());
+    }
 }

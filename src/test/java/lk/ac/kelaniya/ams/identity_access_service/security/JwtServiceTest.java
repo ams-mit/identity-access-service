@@ -285,4 +285,48 @@ class JwtServiceTest {
         Jws<Claims> parsedUserToken = jwtService.parseAndValidateUserToken(userTokenSignedByIdentity);
         assertThat(parsedUserToken.getPayload().get("type")).isEqualTo("user");
     }
+
+    @Test
+    @DisplayName("generateServiceToken uses servicePrivateKey when configured, keeping service signing key separate from user token key")
+    void testGenerateServiceToken_withConfiguredServicePrivateKey() throws Exception {
+        KeyPair svcKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path svcPubKeyFile = tempDir.resolve("svc_public_key.pem");
+        Path svcPrivKeyFile = tempDir.resolve("svc_private_key.pem");
+        RsaKeyPairGenerator.writeKeys(svcKeyPair, svcPrivKeyFile, svcPubKeyFile);
+
+        properties.setServicePrivateKeyPath(svcPrivKeyFile.toUri().toString());
+        rsaKeyProvider.init();
+
+        String serviceToken = jwtService.generateServiceToken();
+        assertThat(serviceToken).isNotBlank();
+
+        // Must verify against svcKeyPair.getPublic()
+        Jws<Claims> parsed = io.jsonwebtoken.Jwts.parser()
+                .verifyWith(svcKeyPair.getPublic())
+                .build()
+                .parseSignedClaims(serviceToken);
+        assertThat(parsed.getPayload().getSubject()).isEqualTo("identity-access-service");
+        assertThat(parsed.getPayload().get("type")).isEqualTo("service");
+
+        // Must FAIL verification against user-token public key (rsaKeyProvider.getPublicKey())
+        assertThatThrownBy(() -> io.jsonwebtoken.Jwts.parser()
+                .verifyWith(rsaKeyProvider.getPublicKey())
+                .build()
+                .parseSignedClaims(serviceToken))
+                .isInstanceOf(io.jsonwebtoken.security.SignatureException.class);
+
+        // Meanwhile, user tokens still use user-token private key (not service private key)
+        String userToken = jwtService.generateToken(UUID.randomUUID(), List.of("TENANT"));
+        Jws<Claims> parsedUserToken = io.jsonwebtoken.Jwts.parser()
+                .verifyWith(rsaKeyProvider.getPublicKey())
+                .build()
+                .parseSignedClaims(userToken);
+        assertThat(parsedUserToken.getPayload().get("type")).isEqualTo("user");
+
+        assertThatThrownBy(() -> io.jsonwebtoken.Jwts.parser()
+                .verifyWith(svcKeyPair.getPublic())
+                .build()
+                .parseSignedClaims(userToken))
+                .isInstanceOf(io.jsonwebtoken.security.SignatureException.class);
+    }
 }
