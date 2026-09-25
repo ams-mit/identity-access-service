@@ -180,4 +180,25 @@ class RsaKeyProviderTest {
         assertThat(provider.getPublicKey()).isNotNull().isInstanceOf(RSAPublicKey.class);
         assertThat(provider.getKeyId()).isEqualTo("external-file-kid");
     }
+
+    @Test
+    @DisplayName("Should load gateway public key when configured, or fall back to public key when unset")
+    void testLoadGatewayPublicKey() throws Exception {
+        properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
+        properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+
+        provider.init();
+        assertThat(provider.getGatewayPublicKey()).isEqualTo(provider.getPublicKey());
+
+        // Now configure a distinct gateway public key
+        KeyPair gwKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path gwPubKeyFile = tempDir.resolve("gw_pub.pem");
+        Path gwPrivKeyFile = tempDir.resolve("gw_priv.pem");
+        RsaKeyPairGenerator.writeKeys(gwKeyPair, gwPrivKeyFile, gwPubKeyFile);
+
+        properties.setGatewayPublicKeyPath(gwPubKeyFile.toUri().toString());
+        provider.init();
+        assertThat(provider.getGatewayPublicKey()).isNotNull();
+        assertThat(provider.getGatewayPublicKey()).isNotEqualTo(provider.getPublicKey());
+    }
 }

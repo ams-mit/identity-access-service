@@ -128,6 +128,7 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
         assertThat(initialLoginBody.getUser().getRoles()).contains("FINANCE_OFFICER");
         String newUserToken = initialLoginBody.getAccessToken();
         assertThat(newUserToken).isNotBlank();
+        String incomingGatewayToken = reSignWithGatewayKey(newUserToken);
 
         // Step 5: User changes password via PUT /api/v1/users/me/password
         String newPermanentPassword = "NewPermanentSecret123";
@@ -137,7 +138,7 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
                 .confirmNewPassword(newPermanentPassword)
                 .build();
 
-        HttpEntity<ChangePasswordRequest> changePasswordEntity = createAuthEntity(changePasswordRequest, newUserToken);
+        HttpEntity<ChangePasswordRequest> changePasswordEntity = createAuthEntity(changePasswordRequest, incomingGatewayToken);
         ResponseEntity<Void> changePasswordResponse = restTemplate.exchange(
                 "/api/v1/users/me/password",
                 HttpMethod.PUT,

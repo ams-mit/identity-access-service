@@ -43,7 +43,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
                 .claim("type", "service")
                 .issuedAt(java.util.Date.from(now))
                 .expiration(java.util.Date.from(now.plusSeconds(300)))
-                .signWith(rsaKeyProvider.getPrivateKey(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .signWith(GATEWAY_KEY_PAIR.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
                 .compact();
     }
 
@@ -256,5 +256,22 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("existing.user@ams.lk");
+    }
+
+    @Test
+    @DisplayName("Incoming token signed with Identity Access private key is REJECTED (401) because filter verifies only with Gateway public key")
+    void testIncomingToken_signedWithIdentityAccessKey_returns401Unauthorized() {
+        seedUserWithRole("raw.key.user@ams.lk", "RawPass123!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
+        String rawToken = loginAndGetRawToken("raw.key.user@ams.lk", "RawPass123!");
+
+        HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(rawToken));
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v1/users/me",
+                HttpMethod.GET,
+                requestEntity,
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }
