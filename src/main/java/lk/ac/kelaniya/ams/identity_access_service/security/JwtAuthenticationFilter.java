@@ -46,7 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = claimsJws.getPayload();
                 String tokenType = claims.get("type", String.class);
 
-                if ("service".equalsIgnoreCase(tokenType)) {
+                if ("service".equals(tokenType)) {
                     String serviceName = claims.getSubject();
                     if (serviceName == null || serviceName.isBlank()) {
                         throw new JwtException("Service token subject must not be blank");
@@ -66,8 +66,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-                } else {
+                } else if ("user".equals(tokenType)) {
                     String userIdStr = claims.getSubject();
+                    if (userIdStr == null || userIdStr.isBlank()) {
+                        throw new JwtException("User token subject must not be blank");
+                    }
                     UUID userId = UUID.fromString(userIdStr);
                     String email = claims.get("email", String.class);
 
@@ -93,6 +96,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new UsernamePasswordAuthenticationToken(principal, null, authorities);
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
+                } else {
+                    log.warn("Rejected JWT with invalid or missing type claim: '{}'", tokenType);
+                    throw new JwtException("Invalid JWT type claim: '" + tokenType + "'. Must be exactly 'user' or 'service'.");
                 }
             } catch (JwtException | IllegalArgumentException ex) {
                 log.warn("Invalid JWT token provided: {}", ex.getMessage());

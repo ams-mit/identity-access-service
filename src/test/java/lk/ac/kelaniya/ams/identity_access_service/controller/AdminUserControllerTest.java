@@ -75,6 +75,7 @@ class AdminUserControllerTest {
         Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
         Claims claims = mock(Claims.class);
         given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(userId.toString());
         given(claims.get("email", String.class)).willReturn(email);
         given(claims.get("roles", List.class)).willReturn(roles);
