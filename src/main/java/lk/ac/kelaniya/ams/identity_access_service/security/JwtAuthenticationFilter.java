@@ -7,6 +7,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.lang.NonNull;
@@ -36,7 +37,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull HttpServletResponse response,
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
-
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -50,6 +50,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     String serviceName = claims.getSubject();
                     if (serviceName == null || serviceName.isBlank()) {
                         throw new JwtException("Service token subject must not be blank");
+                    }
+
+                    if (!JwtService.TRUSTED_SERVICES.contains(serviceName.trim().toLowerCase())) {
+                        log.warn("Rejected service token for untrusted or unregistered service: '{}'", serviceName);
+                        throw new UntrustedServiceException("Untrusted or unregistered service: '" + serviceName + "'");
                     }
 
                     ServicePrincipal principal = ServicePrincipal.builder()
@@ -98,7 +103,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     log.warn("Rejected JWT with invalid or missing type claim: '{}'", tokenType);
                     throw new JwtException("Invalid JWT type claim: '" + tokenType + "'. Must be exactly 'user' or 'service'.");
                 }
-            } catch (JwtException | IllegalArgumentException ex) {
+            } catch (JwtException | IllegalArgumentException | UntrustedServiceException ex) {
                 log.warn("Invalid JWT token provided: {}", ex.getMessage());
                 SecurityContextHolder.clearContext();
             }

@@ -100,18 +100,35 @@ class InternalUserControllerTest {
     }
 
     @Test
-    @DisplayName("GET /internal/v1/users/{userId} with valid service token from NON-allow-listed service returns 403 FORBIDDEN")
+    @DisplayName("GET /internal/v1/users/{userId} with valid service token from NON-allow-listed service returns 403 FORBIDDEN (Rule 10)")
     void testGetUserForValidation_nonAllowListedServiceToken_returns403Forbidden() throws Exception {
         UUID userId = UUID.randomUUID();
         String serviceToken = "valid.unauthorized.service.token";
 
-        mockValidServiceToken(serviceToken, "unauthorized-analytics-service");
+        // identity-access-service is a trusted service (ROLE_SERVICE) but not on user-validation allow-list
+        mockValidServiceToken(serviceToken, "identity-access-service");
 
         mockMvc.perform(get("/internal/v1/users/{userId}", userId)
                         .header("Authorization", "Bearer " + serviceToken)
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("GET /internal/v1/users/{userId} with untrusted/unregistered service token returns 401 UNAUTHORIZED with JSON body (Rule 8)")
+    void testGetUserForValidation_untrustedServiceToken_returns401Unauthorized() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "untrusted.service.token";
+
+        mockValidServiceToken(serviceToken, "unknown-malicious-service");
+
+        mockMvc.perform(get("/internal/v1/users/{userId}", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
     }
 
     @Test
@@ -126,7 +143,8 @@ class InternalUserControllerTest {
         mockMvc.perform(get("/internal/v1/users/{userId}", targetUserId)
                         .header("Authorization", "Bearer " + adminToken)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
     }
 
     @Test
@@ -141,17 +159,20 @@ class InternalUserControllerTest {
         mockMvc.perform(get("/internal/v1/users/{userId}", targetUserId)
                         .header("Authorization", "Bearer " + residentToken)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
     }
 
     @Test
-    @DisplayName("GET /internal/v1/users/{userId} unauthenticated returns 401 UNAUTHORIZED")
+    @DisplayName("GET /internal/v1/users/{userId} unauthenticated returns 401 UNAUTHORIZED with standard JSON error body")
     void testGetUserForValidation_unauthenticated_returns401Unauthorized() throws Exception {
         UUID userId = UUID.randomUUID();
 
         mockMvc.perform(get("/internal/v1/users/{userId}", userId)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
     }
 
     @Test

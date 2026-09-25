@@ -119,8 +119,8 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     }
 
     @Test
-    @DisplayName("Unauthenticated request to internal endpoint returns 401 UNAUTHORIZED")
-    void testInternalUserEndpoint_unauthenticated_returns401Unauthorized() {
+    @DisplayName("Unauthenticated request to internal endpoint returns 401 UNAUTHORIZED with standard JSON error body (Rule 8)")
+    void testInternalUserEndpoint_unauthenticated_returns401Unauthorized() throws Exception {
         UUID randomTargetUserId = UUID.randomUUID();
         HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(null));
 
@@ -132,6 +132,10 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotBlank();
+        JsonNode jsonNode = objectMapper.readTree(response.getBody());
+        assertThat(jsonNode.has("error")).isTrue();
+        assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
     }
 
     @Test
@@ -195,10 +199,11 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
 
     @Test
     @DisplayName("Valid service token from NON-allow-listed service is REJECTED (403) from internal endpoint (Rule 10)")
-    void testInternalUserEndpoint_nonAllowListedService_returns403Forbidden() {
+    void testInternalUserEndpoint_nonAllowListedService_returns403Forbidden() throws Exception {
         User user = seedUserWithRole("resident.nonallowed@ams.lk", "SecurePass1!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
 
-        String serviceToken = createForeignServiceToken("unauthorized-analytics-service");
+        // identity-access-service is in TRUSTED_SERVICES (ROLE_SERVICE) but not on user-validation allow-list
+        String serviceToken = createForeignServiceToken("identity-access-service");
         HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
 
         ResponseEntity<String> response = restTemplate.exchange(
@@ -209,6 +214,30 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        JsonNode jsonNode = objectMapper.readTree(response.getBody());
+        assertThat(jsonNode.has("error")).isTrue();
+        assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("FORBIDDEN");
+    }
+
+    @Test
+    @DisplayName("Untrusted/unregistered service JWT is REJECTED with 401 UNAUTHORIZED and JSON body (Rule 8)")
+    void testInternalUserEndpoint_untrustedService_returns401Unauthorized() throws Exception {
+        User user = seedUserWithRole("resident.untrusted@ams.lk", "SecurePass1!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
+
+        String serviceToken = createForeignServiceToken("unknown-malicious-service");
+        HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/internal/v1/users/" + user.getId(),
+                HttpMethod.GET,
+                requestEntity,
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode jsonNode = objectMapper.readTree(response.getBody());
+        assertThat(jsonNode.has("error")).isTrue();
+        assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
     }
 
     @Test

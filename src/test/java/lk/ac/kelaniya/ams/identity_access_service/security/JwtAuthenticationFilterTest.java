@@ -245,6 +245,29 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    @DisplayName("Service token with untrusted/unregistered service name is rejected and clears SecurityContext (Rule 8)")
+    void testDoFilterInternal_untrustedService_clearsSecurityContext() throws Exception {
+        String token = "untrusted.service.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("service");
+        given(claims.getSubject()).willReturn("untrusted-malicious-service");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
     @DisplayName("Request without Bearer header passes through without setting authentication")
     void testDoFilterInternal_noAuthorizationHeader_noAuth() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();

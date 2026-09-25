@@ -12,10 +12,11 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
@@ -48,11 +49,26 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                            ErrorResponse errorResponse = ErrorResponse.of(
+                                    "UNAUTHORIZED",
+                                    authException != null && authException.getMessage() != null && !authException.getMessage().isBlank()
+                                            ? authException.getMessage()
+                                            : "Full authentication is required to access this resource"
+                            );
+                            response.getWriter().write(mapper.writeValueAsString(errorResponse));
+                        })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(HttpStatus.FORBIDDEN.value());
-                            response.setContentType("application/json");
-                            response.getWriter().write("{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Access denied: insufficient permissions\"}}");
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                            ErrorResponse errorResponse = ErrorResponse.of("FORBIDDEN", "Access denied: insufficient permissions");
+                            response.getWriter().write(mapper.writeValueAsString(errorResponse));
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
