@@ -278,4 +278,49 @@ class JwtAuthenticationFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
+
+    @Test
+    @DisplayName("User token on internal endpoint is rejected and clears SecurityContext (token type isolation)")
+    void testDoFilterInternal_userTokenOnInternalEndpoint_clearsSecurityContext() throws Exception {
+        String token = "valid.user.token";
+        UUID userId = UUID.randomUUID();
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("user");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/internal/v1/users/" + userId);
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("Service token on user API endpoint is rejected and clears SecurityContext (token type isolation)")
+    void testDoFilterInternal_serviceTokenOnApiEndpoint_clearsSecurityContext() throws Exception {
+        String token = "valid.service.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("service");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/users/me");
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
 }

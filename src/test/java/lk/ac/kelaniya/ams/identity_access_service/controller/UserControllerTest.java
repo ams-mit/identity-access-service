@@ -389,21 +389,22 @@ class UserControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users/me with valid service token returns 403 FORBIDDEN")
-    void testGetCurrentUser_serviceToken_returns403Forbidden() throws Exception {
+    @DisplayName("GET /api/v1/users/me with service token returns 401 UNAUTHORIZED (token type isolation)")
+    void testGetCurrentUser_serviceToken_returns401Unauthorized() throws Exception {
         String serviceToken = "valid.service.token";
         mockValidServiceToken(serviceToken, "billing-payment-service");
 
         mockMvc.perform(get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + serviceToken)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test
-    @DisplayName("PUT /api/v1/users/me/password with valid service token returns 403 FORBIDDEN")
-    void testChangePassword_serviceToken_returns403Forbidden() throws Exception {
+    @DisplayName("PUT /api/v1/users/me/password with service token returns 401 UNAUTHORIZED (token type isolation)")
+    void testChangePassword_serviceToken_returns401Unauthorized() throws Exception {
         String serviceToken = "valid.service.token";
         mockValidServiceToken(serviceToken, "billing-payment-service");
 
@@ -417,7 +418,8 @@ class UserControllerTest {
                         .header("Authorization", "Bearer " + serviceToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 }

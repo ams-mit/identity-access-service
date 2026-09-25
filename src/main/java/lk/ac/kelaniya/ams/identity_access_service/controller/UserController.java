@@ -71,10 +71,10 @@ public class UserController {
     })
     public ResponseEntity<UserSummaryResponse> getCurrentUser(@AuthenticationPrincipal Object principal) {
         if (principal instanceof ServicePrincipal) {
-            throw new AccessDeniedException("Access denied: service tokens cannot access user profile endpoints");
+            throw new InvalidCredentialsException("Authentication required");
         }
         if (!(principal instanceof UserPrincipal userPrincipal) || userPrincipal.getUserId() == null) {
-            throw new InvalidCredentialsException("Unauthorized - missing or invalid authentication");
+            throw new InvalidCredentialsException("Authentication required");
         }
         UserSummaryResponse response = userService.getCurrentUser(userPrincipal.getUserId());
         return ResponseEntity.ok(response);
@@ -122,10 +122,10 @@ public class UserController {
             @Valid @RequestBody ChangePasswordRequest request
     ) {
         if (principal instanceof ServicePrincipal) {
-            throw new AccessDeniedException("Access denied: service tokens cannot access user profile endpoints");
+            throw new InvalidCredentialsException("Authentication required");
         }
         if (!(principal instanceof UserPrincipal userPrincipal) || userPrincipal.getUserId() == null) {
-            throw new InvalidCredentialsException("Unauthorized - missing or invalid authentication");
+            throw new InvalidCredentialsException("Authentication required");
         }
         userService.changePassword(userPrincipal.getUserId(), request);
         return ResponseEntity.noContent().build();
