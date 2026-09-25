@@ -41,26 +41,21 @@ public class JwtService {
     private final RsaKeyProperties rsaKeyProperties;
 
     /**
-     * Issues an RS256-signed JWT with subject (userId), type ("user"), email, roles, iat, exp (30 min expiry),
-     * and a kid header matching the JWKS endpoint.
+     * Issues an RS256-signed JWT with subject (userId), type ("user"), roles, iat, exp (30 min expiry).
+     * Strictly includes only permitted claims (sub, type, roles, iat, exp) and excludes kid header per JWT Standard Rule 3.
      *
-     * @param userId the unique user identifier
-     * @param email  the user's email address
-     * @param roles  the list of assigned user roles
+     * @param userId unique user identifier
+     * @param roles  list of assigned user roles
      * @return compact RS256-signed JWT string
      */
-    public String generateToken(UUID userId, String email, List<String> roles) {
+    public String generateToken(UUID userId, List<String> roles) {
         Instant now = Instant.now();
         long expirationSeconds = getExpirationSeconds();
         Instant expiry = now.plusSeconds(expirationSeconds);
 
         return Jwts.builder()
-                .header()
-                    .keyId(rsaKeyProvider.getKeyId())
-                    .and()
                 .subject(userId.toString())
                 .claim("type", "user")
-                .claim("email", email)
                 .claim("roles", roles != null ? roles : List.of())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
@@ -69,9 +64,21 @@ public class JwtService {
     }
 
     /**
+     * Overload preserving compatibility with existing callers. Email is omitted from JWT claims per JWT Standard Rule 3.
+     *
+     * @param userId unique user identifier
+     * @param email  user email (ignored, not embedded in token)
+     * @param roles  list of assigned user roles
+     * @return compact RS256-signed JWT string
+     */
+    public String generateToken(UUID userId, String email, List<String> roles) {
+        return generateToken(userId, roles);
+    }
+
+    /**
      * Issues an RS256-signed service-to-service JWT for an authenticated and trusted microservice caller.
      * Sets type="service", sub=serviceName, standard iat/exp claims with short TTL,
-     * and explicitly excludes user-specific claims (email, roles).
+     * and strictly excludes user-specific claims (email, roles) and kid header per Rule 3.
      *
      * @param serviceName registered caller microservice identifier
      * @return compact RS256-signed service JWT
@@ -93,9 +100,6 @@ public class JwtService {
         Instant expiry = now.plusSeconds(expirationSeconds);
 
         return Jwts.builder()
-                .header()
-                    .keyId(rsaKeyProvider.getKeyId())
-                    .and()
                 .subject(normalizedServiceName)
                 .claim("type", "service")
                 .issuedAt(Date.from(now))

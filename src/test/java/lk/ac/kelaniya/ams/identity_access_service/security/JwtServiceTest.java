@@ -51,7 +51,7 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("Issued JWT has valid RS256 signature, kid header, and required claims")
+    @DisplayName("Issued JWT has valid RS256 signature, no kid header, and strictly permitted claims (sub, type, roles, iat, exp)")
     void testGenerateToken_validSignatureAndClaims() {
         UUID userId = UUID.randomUUID();
         String email = "resident@ams.lk";
@@ -64,15 +64,16 @@ class JwtServiceTest {
         // Verify token signature and claims using the public key
         Jws<Claims> parsedJws = jwtService.parseAndValidateToken(token);
 
-        // Header assertions
-        assertThat(parsedJws.getHeader().getKeyId()).isEqualTo("test-kid-123");
+        // Header assertions: kid excluded per Rule 3
+        assertThat(parsedJws.getHeader().getKeyId()).isNull();
         assertThat(parsedJws.getHeader().getAlgorithm()).isEqualTo("RS256");
 
-        // Payload / Claims assertions
+        // Payload / Claims assertions: strictly sub, type, roles, iat, exp
         Claims payload = parsedJws.getPayload();
+        assertThat(payload.keySet()).containsExactlyInAnyOrder("sub", "type", "roles", "iat", "exp");
         assertThat(payload.getSubject()).isEqualTo(userId.toString());
         assertThat(payload.get("type", String.class)).isEqualTo("user");
-        assertThat(payload.get("email", String.class)).isEqualTo("resident@ams.lk");
+        assertThat(payload.get("email")).isNull();
         assertThat(payload.get("roles", List.class)).containsExactly("RESIDENT", "TENANT");
 
         Date iat = payload.getIssuedAt();
@@ -85,7 +86,7 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("Issued JWT supports empty roles list")
+    @DisplayName("Issued JWT supports empty roles list and strictly permitted claims")
     void testGenerateToken_emptyRoles() {
         UUID userId = UUID.randomUUID();
         String email = "user@ams.lk";
@@ -94,8 +95,9 @@ class JwtServiceTest {
         Jws<Claims> parsedJws = jwtService.parseAndValidateToken(token);
 
         Claims payload = parsedJws.getPayload();
+        assertThat(payload.keySet()).containsExactlyInAnyOrder("sub", "type", "roles", "iat", "exp");
         assertThat(payload.getSubject()).isEqualTo(userId.toString());
-        assertThat(payload.get("email", String.class)).isEqualTo("user@ams.lk");
+        assertThat(payload.get("email")).isNull();
         assertThat(payload.get("roles", List.class)).isEmpty();
     }
 
@@ -213,10 +215,11 @@ class JwtServiceTest {
 
         Jws<Claims> parsedJws = jwtService.parseAndValidateToken(token);
 
-        assertThat(parsedJws.getHeader().getKeyId()).isEqualTo("test-kid-123");
+        assertThat(parsedJws.getHeader().getKeyId()).isNull();
         assertThat(parsedJws.getHeader().getAlgorithm()).isEqualTo("RS256");
 
         Claims payload = parsedJws.getPayload();
+        assertThat(payload.keySet()).containsExactlyInAnyOrder("sub", "type", "iat", "exp");
         assertThat(payload.getSubject()).isEqualTo("billing-payment-service");
         assertThat(payload.get("type", String.class)).isEqualTo("service");
         assertThat(payload.get("email")).isNull();

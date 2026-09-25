@@ -72,7 +72,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         throw new JwtException("User token subject must not be blank");
                     }
                     UUID userId = UUID.fromString(userIdStr);
-                    String email = claims.get("email", String.class);
 
                     @SuppressWarnings("unchecked")
                     List<String> roles = claims.get("roles", List.class);
@@ -88,7 +87,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     UserPrincipal principal = UserPrincipal.builder()
                             .userId(userId)
-                            .email(email)
                             .roles(roles != null ? roles : List.of())
                             .build();
 

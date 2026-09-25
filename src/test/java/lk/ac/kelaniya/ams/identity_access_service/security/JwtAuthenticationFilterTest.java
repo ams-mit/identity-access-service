@@ -92,7 +92,6 @@ class JwtAuthenticationFilterTest {
         given(claimsJws.getPayload()).willReturn(claims);
         given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(userId.toString());
-        given(claims.get("email", String.class)).willReturn(email);
         given(claims.get("roles", List.class)).willReturn(List.of("TENANT_RESIDENT"));
         given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
 
@@ -109,7 +108,7 @@ class JwtAuthenticationFilterTest {
 
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         assertThat(principal.getUserId()).isEqualTo(userId);
-        assertThat(principal.getEmail()).isEqualTo(email);
+        assertThat(principal.getEmail()).isNull();
         assertThat(principal.getRoles()).containsExactly("TENANT_RESIDENT");
 
         List<String> authorityNames = auth.getAuthorities().stream()
