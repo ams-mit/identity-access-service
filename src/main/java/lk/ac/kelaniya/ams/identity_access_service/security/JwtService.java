@@ -3,6 +3,7 @@ package lk.ac.kelaniya.ams.identity_access_service.security;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.UnsupportedJwtException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -105,15 +106,25 @@ public class JwtService {
 
     /**
      * Parses and verifies an RS256-signed JWT against the configured public key.
+     * Explicitly enforces that the header algorithm is strictly RS256 before returning claims.
      *
      * @param token the compact JWT string
      * @return parsed JWS containing header and claims payload
+     * @throws UnsupportedJwtException if token signing algorithm is not RS256
      */
     public Jws<Claims> parseAndValidateToken(String token) {
-        return Jwts.parser()
+        Jws<Claims> claimsJws = Jwts.parser()
                 .verifyWith(rsaKeyProvider.getPublicKey())
                 .build()
                 .parseSignedClaims(token);
+
+        String algorithm = claimsJws.getHeader().getAlgorithm();
+        if (!"RS256".equals(algorithm)) {
+            log.warn("Rejected JWT with disallowed algorithm: '{}'. Only RS256 is permitted.", algorithm);
+            throw new UnsupportedJwtException("Unsupported JWT algorithm: '" + algorithm + "'. Only RS256 is permitted.");
+        }
+
+        return claimsJws;
     }
 
     /**
