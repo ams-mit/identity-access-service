@@ -26,8 +26,8 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 jwt:
-  private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
-  public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
+  private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH:}
   expiration-seconds: 1800
   service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
 auth:

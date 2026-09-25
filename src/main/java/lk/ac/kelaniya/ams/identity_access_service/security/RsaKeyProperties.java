@@ -15,12 +15,12 @@ import org.springframework.context.annotation.Configuration;
 public class RsaKeyProperties {
 
     /**
-     * Path to the RSA private key in PKCS#8 PEM format (e.g. classpath:certs/private_key.pem or file:certs/private_key.pem).
+     * Path to the RSA private key in PKCS#8 PEM format (e.g. file:certs/private_key.pem or /secrets/private_key.pem).
      */
     private String privateKeyPath;
 
     /**
-     * Path to the RSA public key in X.509 PEM format (e.g. classpath:certs/public_key.pem or file:certs/public_key.pem).
+     * Path to the RSA public key in X.509 PEM format (e.g. file:certs/public_key.pem or /secrets/public_key.pem).
      */
     private String publicKeyPath;
 
