@@ -119,20 +119,15 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
-    @DisplayName("Legacy user token without type claim authenticates as UserPrincipal (backward compatibility)")
-    void testDoFilterInternal_legacyUserTokenWithoutType_authenticatesUserPrincipal() throws Exception {
-        String token = "legacy.user.token";
-        UUID userId = UUID.randomUUID();
-        String email = "legacy@ams.lk";
+    @DisplayName("Token with missing type claim is rejected and clears SecurityContext")
+    void testDoFilterInternal_missingTypeClaim_clearsSecurityContext() throws Exception {
+        String token = "missing.type.token";
 
         @SuppressWarnings("unchecked")
         Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
         Claims claims = mock(Claims.class);
         given(claimsJws.getPayload()).willReturn(claims);
-        given(claims.get("type", String.class)).willReturn(null); // legacy: no type claim
-        given(claims.getSubject()).willReturn(userId.toString());
-        given(claims.get("email", String.class)).willReturn(email);
-        given(claims.get("roles", List.class)).willReturn(List.of("OWNER"));
+        given(claims.get("type", String.class)).willReturn(null);
         given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
 
         MockHttpServletRequest request = new MockHttpServletRequest();
@@ -142,13 +137,95 @@ class JwtAuthenticationFilterTest {
 
         filter.doFilter(request, response, filterChain);
 
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        assertThat(auth).isNotNull();
-        assertThat(auth.getPrincipal()).isInstanceOf(UserPrincipal.class);
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
 
-        UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
-        assertThat(principal.getUserId()).isEqualTo(userId);
-        assertThat(principal.getEmail()).isEqualTo(email);
+    @Test
+    @DisplayName("Token with explicit null type claim is rejected and clears SecurityContext")
+    void testDoFilterInternal_nullTypeClaim_clearsSecurityContext() throws Exception {
+        String token = "null.type.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn(null);
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("Token with unexpected type 'admin' is rejected and clears SecurityContext")
+    void testDoFilterInternal_unexpectedTypeAdmin_clearsSecurityContext() throws Exception {
+        String token = "admin.type.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("admin");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("Token with wrong-cased type 'SERVICE' is rejected and clears SecurityContext")
+    void testDoFilterInternal_unexpectedCaseService_clearsSecurityContext() throws Exception {
+        String token = "uppercase.service.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("SERVICE");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("Token with wrong-cased type 'USER' is rejected and clears SecurityContext")
+    void testDoFilterInternal_unexpectedCaseUser_clearsSecurityContext() throws Exception {
+        String token = "uppercase.user.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("USER");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
     @Test

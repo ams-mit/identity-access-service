@@ -2,11 +2,14 @@ package lk.ac.kelaniya.ams.identity_access_service.security;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
+import io.jsonwebtoken.UnsupportedJwtException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.core.io.DefaultResourceLoader;
+
+import javax.crypto.SecretKey;
 
 import java.nio.file.Path;
 import java.security.KeyPair;
@@ -144,6 +147,48 @@ class JwtServiceTest {
     void testParseAndValidateToken_malformedToken_throwsMalformedJwtException() {
         assertThatThrownBy(() -> jwtService.parseAndValidateToken("not.a.valid.jwt.payload"))
                 .isInstanceOf(io.jsonwebtoken.MalformedJwtException.class);
+    }
+
+    @Test
+    @DisplayName("parseAndValidateToken rejects token with HS256 algorithm (disallowed symmetric algorithm)")
+    void testParseAndValidateToken_hs256Algorithm_throwsJwtException() {
+        SecretKey hmacKey = io.jsonwebtoken.Jwts.SIG.HS256.key().build();
+        String hs256Token = io.jsonwebtoken.Jwts.builder()
+                .header()
+                    .keyId("test-kid-123")
+                    .and()
+                .subject(UUID.randomUUID().toString())
+                .claim("type", "user")
+                .claim("email", "attacker@ams.lk")
+                .claim("roles", List.of("SYSTEM_ADMINISTRATOR"))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 1800000))
+                .signWith(hmacKey, io.jsonwebtoken.Jwts.SIG.HS256)
+                .compact();
+
+        assertThatThrownBy(() -> jwtService.parseAndValidateToken(hs256Token))
+                .isInstanceOf(io.jsonwebtoken.JwtException.class);
+    }
+
+    @Test
+    @DisplayName("parseAndValidateToken rejects token with RS384 algorithm (only RS256 allowed)")
+    void testParseAndValidateToken_rs384Algorithm_throwsUnsupportedJwtException() {
+        String rs384Token = io.jsonwebtoken.Jwts.builder()
+                .header()
+                    .keyId("test-kid-123")
+                    .and()
+                .subject(UUID.randomUUID().toString())
+                .claim("type", "user")
+                .claim("email", "resident@ams.lk")
+                .claim("roles", List.of("RESIDENT"))
+                .issuedAt(new Date())
+                .expiration(new Date(System.currentTimeMillis() + 1800000))
+                .signWith(rsaKeyProvider.getPrivateKey(), io.jsonwebtoken.Jwts.SIG.RS384)
+                .compact();
+
+        assertThatThrownBy(() -> jwtService.parseAndValidateToken(rs384Token))
+                .isInstanceOf(UnsupportedJwtException.class)
+                .hasMessageContaining("Only RS256 is permitted");
     }
 
     @Test

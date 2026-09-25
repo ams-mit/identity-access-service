@@ -492,6 +492,7 @@ class AuthControllerTest {
         Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
         Claims claims = mock(Claims.class);
         given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(UUID.randomUUID().toString());
         given(claims.get("roles", List.class)).willReturn(List.of("RESIDENT"));
         given(jwtService.parseAndValidateToken(validToken)).willReturn(claimsJws);

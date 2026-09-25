@@ -12,10 +12,12 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.request.ChangePasswordRequ
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.UserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
+import lk.ac.kelaniya.ams.identity_access_service.security.ServicePrincipal;
 import lk.ac.kelaniya.ams.identity_access_service.security.UserPrincipal;
 import lk.ac.kelaniya.ams.identity_access_service.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -67,11 +69,14 @@ public class UserController {
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<UserSummaryResponse> getCurrentUser(@AuthenticationPrincipal UserPrincipal principal) {
-        if (principal == null || principal.getUserId() == null) {
+    public ResponseEntity<UserSummaryResponse> getCurrentUser(@AuthenticationPrincipal Object principal) {
+        if (principal instanceof ServicePrincipal) {
+            throw new AccessDeniedException("Access denied: service tokens cannot access user profile endpoints");
+        }
+        if (!(principal instanceof UserPrincipal userPrincipal) || userPrincipal.getUserId() == null) {
             throw new InvalidCredentialsException("Unauthorized - missing or invalid authentication");
         }
-        UserSummaryResponse response = userService.getCurrentUser(principal.getUserId());
+        UserSummaryResponse response = userService.getCurrentUser(userPrincipal.getUserId());
         return ResponseEntity.ok(response);
     }
 
@@ -113,13 +118,16 @@ public class UserController {
             )
     })
     public ResponseEntity<Void> changePassword(
-            @AuthenticationPrincipal UserPrincipal principal,
+            @AuthenticationPrincipal Object principal,
             @Valid @RequestBody ChangePasswordRequest request
     ) {
-        if (principal == null || principal.getUserId() == null) {
+        if (principal instanceof ServicePrincipal) {
+            throw new AccessDeniedException("Access denied: service tokens cannot access user profile endpoints");
+        }
+        if (!(principal instanceof UserPrincipal userPrincipal) || userPrincipal.getUserId() == null) {
             throw new InvalidCredentialsException("Unauthorized - missing or invalid authentication");
         }
-        userService.changePassword(principal.getUserId(), request);
+        userService.changePassword(userPrincipal.getUserId(), request);
         return ResponseEntity.noContent().build();
     }
 }
