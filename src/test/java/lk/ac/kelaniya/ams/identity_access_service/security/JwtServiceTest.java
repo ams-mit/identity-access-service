@@ -194,22 +194,9 @@ class JwtServiceTest {
     }
 
     @Test
-    @DisplayName("generateServiceToken creates valid RS256 token with type=service and no email/roles")
-    void testGenerateServiceToken_validTrustedService() {
-        assertThat(JwtService.TRUSTED_SERVICES).containsExactlyInAnyOrder(
-                "identity-access-service",
-                "resident-management-service",
-                "property-unit-service",
-                "lease-occupancy-service",
-                "billing-payment-service",
-                "utility-charge-service",
-                "operations-service",
-                "community-service"
-        );
-
-        String serviceName = "billing-payment-service";
-
-        String token = jwtService.generateServiceToken(serviceName);
+    @DisplayName("generateServiceToken creates valid RS256 token for identity-access-service with type=service and strictly permitted claims")
+    void testGenerateServiceToken_identityAccessService_succeeds() {
+        String token = jwtService.generateServiceToken();
 
         assertThat(token).isNotBlank();
 
@@ -220,7 +207,7 @@ class JwtServiceTest {
 
         Claims payload = parsedJws.getPayload();
         assertThat(payload.keySet()).containsExactlyInAnyOrder("sub", "type", "iat", "exp");
-        assertThat(payload.getSubject()).isEqualTo("billing-payment-service");
+        assertThat(payload.getSubject()).isEqualTo("identity-access-service");
         assertThat(payload.get("type", String.class)).isEqualTo("service");
         assertThat(payload.get("email")).isNull();
         assertThat(payload.get("roles")).isNull();
@@ -232,20 +219,26 @@ class JwtServiceTest {
 
         long diffSeconds = (exp.getTime() - iat.getTime()) / 1000;
         assertThat(diffSeconds).isEqualTo(300);
+
+        // Explicit overload with serviceName
+        String tokenWithName = jwtService.generateServiceToken("identity-access-service");
+        assertThat(tokenWithName).isNotBlank();
     }
 
     @Test
-    @DisplayName("generateServiceToken rejects untrusted service names")
-    void testGenerateServiceToken_untrustedService_throwsException() {
+    @DisplayName("generateServiceToken rejects minting tokens for external microservices (Rules 2, 5, 12)")
+    void testGenerateServiceToken_otherServices_throwsException() {
+        assertThatThrownBy(() -> jwtService.generateServiceToken("billing-payment-service"))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class)
+                .hasMessageContaining("Identity Access Service cannot mint service tokens for other services");
+
+        assertThatThrownBy(() -> jwtService.generateServiceToken("resident-management-service"))
+                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class)
+                .hasMessageContaining("Identity Access Service cannot mint service tokens for other services");
+
         assertThatThrownBy(() -> jwtService.generateServiceToken("unknown-malicious-service"))
                 .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class)
-                .hasMessageContaining("Untrusted or unrecognized service");
-
-        assertThatThrownBy(() -> jwtService.generateServiceToken("billing-service"))
-                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
-
-        assertThatThrownBy(() -> jwtService.generateServiceToken("api-gateway"))
-                .isInstanceOf(lk.ac.kelaniya.ams.identity_access_service.exception.UntrustedServiceException.class);
+                .hasMessageContaining("Identity Access Service cannot mint service tokens for other services");
     }
 
     @Test

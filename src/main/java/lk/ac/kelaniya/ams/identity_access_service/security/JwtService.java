@@ -76,13 +76,30 @@ public class JwtService {
     }
 
     /**
-     * Issues an RS256-signed service-to-service JWT for an authenticated and trusted microservice caller.
-     * Sets type="service", sub=serviceName, standard iat/exp claims with short TTL,
-     * and strictly excludes user-specific claims (email, roles) and kid header per Rule 3.
+     * The fixed service identifier for Identity Access Service.
+     */
+    public static final String IDENTITY_ACCESS_SERVICE_NAME = "identity-access-service";
+
+    /**
+     * Issues an RS256-signed service-to-service JWT strictly for Identity Access Service's own outbound internal calls.
+     * Signs a token asserting sub="identity-access-service", type="service", iat, exp.
+     * Identity Access Service never acts as a centralized service-token issuer for other microservices per JWT Standard Rules 2, 5, 12.
      *
-     * @param serviceName registered caller microservice identifier
+     * @return compact RS256-signed service JWT asserting sub="identity-access-service"
+     */
+    public String generateServiceToken() {
+        return generateServiceToken(IDENTITY_ACCESS_SERVICE_NAME);
+    }
+
+    /**
+     * Issues an RS256-signed service-to-service JWT strictly for Identity Access Service's own outbound calls.
+     * Sets type="service", sub="identity-access-service", standard iat/exp claims with short TTL,
+     * and strictly excludes user-specific claims (email, roles) and kid header per Rule 3.
+     * Any attempt to mint a service token on behalf of another service is rejected per JWT Standard Rules 2, 5, and 12.
+     *
+     * @param serviceName caller microservice identifier (must strictly equal "identity-access-service")
      * @return compact RS256-signed service JWT
-     * @throws UntrustedServiceException if serviceName is null, blank, or not in the trusted services registry
+     * @throws UntrustedServiceException if serviceName is null, blank, or not "identity-access-service"
      */
     public String generateServiceToken(String serviceName) {
         if (serviceName == null || serviceName.isBlank()) {
@@ -90,9 +107,9 @@ public class JwtService {
         }
 
         String normalizedServiceName = serviceName.trim().toLowerCase();
-        if (!TRUSTED_SERVICES.contains(normalizedServiceName)) {
-            log.warn("Service token request rejected for untrusted service: '{}'", serviceName);
-            throw new UntrustedServiceException("Untrusted or unrecognized service: '" + serviceName + "'");
+        if (!IDENTITY_ACCESS_SERVICE_NAME.equals(normalizedServiceName)) {
+            log.warn("Centralized service token issuance rejected for '{}'. Identity Access Service must not mint service tokens on behalf of other microservices. Each service must generate and sign its own Service JWT.", serviceName);
+            throw new UntrustedServiceException("Identity Access Service cannot mint service tokens for other services: '" + serviceName + "'. Backend services must generate and sign their own Service JWTs.");
         }
 
         Instant now = Instant.now();
@@ -100,7 +117,7 @@ public class JwtService {
         Instant expiry = now.plusSeconds(expirationSeconds);
 
         return Jwts.builder()
-                .subject(normalizedServiceName)
+                .subject(IDENTITY_ACCESS_SERVICE_NAME)
                 .claim("type", "service")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
