@@ -128,7 +128,7 @@ class InternalUserControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
-                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test
@@ -172,7 +172,7 @@ class InternalUserControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
-                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test

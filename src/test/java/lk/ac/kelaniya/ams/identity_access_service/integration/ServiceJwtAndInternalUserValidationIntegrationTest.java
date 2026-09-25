@@ -136,6 +136,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         JsonNode jsonNode = objectMapper.readTree(response.getBody());
         assertThat(jsonNode.has("error")).isTrue();
         assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(jsonNode.get("error").get("message").asText()).isEqualTo("Authentication required");
     }
 
     @Test
@@ -238,6 +239,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         JsonNode jsonNode = objectMapper.readTree(response.getBody());
         assertThat(jsonNode.has("error")).isTrue();
         assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(jsonNode.get("error").get("message").asText()).isEqualTo("Authentication required");
     }
 
     @Test
