@@ -180,4 +180,46 @@ class RsaKeyProviderTest {
         assertThat(provider.getPublicKey()).isNotNull().isInstanceOf(RSAPublicKey.class);
         assertThat(provider.getKeyId()).isEqualTo("external-file-kid");
     }
+
+    @Test
+    @DisplayName("Should load gateway public key when configured, or fall back to public key when unset")
+    void testLoadGatewayPublicKey() throws Exception {
+        properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
+        properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+
+        provider.init();
+        assertThat(provider.getGatewayPublicKey()).isEqualTo(provider.getPublicKey());
+
+        // Now configure a distinct gateway public key
+        KeyPair gwKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path gwPubKeyFile = tempDir.resolve("gw_pub.pem");
+        Path gwPrivKeyFile = tempDir.resolve("gw_priv.pem");
+        RsaKeyPairGenerator.writeKeys(gwKeyPair, gwPrivKeyFile, gwPubKeyFile);
+
+        properties.setGatewayPublicKeyPath(gwPubKeyFile.toUri().toString());
+        provider.init();
+        assertThat(provider.getGatewayPublicKey()).isNotNull();
+        assertThat(provider.getGatewayPublicKey()).isNotEqualTo(provider.getPublicKey());
+    }
+
+    @Test
+    @DisplayName("Should load service private key when configured, or fall back to user private key when unset")
+    void testLoadServicePrivateKey() throws Exception {
+        properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
+        properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+
+        provider.init();
+        assertThat(provider.getServicePrivateKey()).isEqualTo(provider.getPrivateKey());
+
+        // Now configure a distinct service private key
+        KeyPair svcKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path svcPubKeyFile = tempDir.resolve("svc_pub.pem");
+        Path svcPrivKeyFile = tempDir.resolve("svc_priv.pem");
+        RsaKeyPairGenerator.writeKeys(svcKeyPair, svcPrivKeyFile, svcPubKeyFile);
+
+        properties.setServicePrivateKeyPath(svcPrivKeyFile.toUri().toString());
+        provider.init();
+        assertThat(provider.getServicePrivateKey()).isNotNull();
+        assertThat(provider.getServicePrivateKey()).isNotEqualTo(provider.getPrivateKey());
+    }
 }

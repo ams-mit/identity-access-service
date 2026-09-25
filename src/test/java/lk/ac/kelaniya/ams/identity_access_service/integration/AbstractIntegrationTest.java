@@ -55,17 +55,29 @@ public abstract class AbstractIntegrationTest {
     private static final Path TEMP_KEY_DIR;
     private static final Path TEMP_PRIVATE_KEY;
     private static final Path TEMP_PUBLIC_KEY;
+    private static final Path TEMP_GATEWAY_PRIVATE_KEY;
+    private static final Path TEMP_GATEWAY_PUBLIC_KEY;
+    protected static final KeyPair IDENTITY_KEY_PAIR;
+    protected static final KeyPair GATEWAY_KEY_PAIR;
 
     static {
         try {
             TEMP_KEY_DIR = Files.createTempDirectory("ams-test-rsa-keys-");
             TEMP_PRIVATE_KEY = TEMP_KEY_DIR.resolve("private_key.pem");
             TEMP_PUBLIC_KEY = TEMP_KEY_DIR.resolve("public_key.pem");
-            KeyPair keyPair = RsaKeyPairGenerator.generateKeyPair(2048);
-            RsaKeyPairGenerator.writeKeys(keyPair, TEMP_PRIVATE_KEY, TEMP_PUBLIC_KEY);
+            IDENTITY_KEY_PAIR = RsaKeyPairGenerator.generateKeyPair(2048);
+            RsaKeyPairGenerator.writeKeys(IDENTITY_KEY_PAIR, TEMP_PRIVATE_KEY, TEMP_PUBLIC_KEY);
+
+            GATEWAY_KEY_PAIR = RsaKeyPairGenerator.generateKeyPair(2048);
+            TEMP_GATEWAY_PRIVATE_KEY = TEMP_KEY_DIR.resolve("gateway_private_key.pem");
+            TEMP_GATEWAY_PUBLIC_KEY = TEMP_KEY_DIR.resolve("gateway_public_key.pem");
+            RsaKeyPairGenerator.writeKeys(GATEWAY_KEY_PAIR, TEMP_GATEWAY_PRIVATE_KEY, TEMP_GATEWAY_PUBLIC_KEY);
+
             TEMP_KEY_DIR.toFile().deleteOnExit();
             TEMP_PRIVATE_KEY.toFile().deleteOnExit();
             TEMP_PUBLIC_KEY.toFile().deleteOnExit();
+            TEMP_GATEWAY_PRIVATE_KEY.toFile().deleteOnExit();
+            TEMP_GATEWAY_PUBLIC_KEY.toFile().deleteOnExit();
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate ephemeral RSA keypair for integration tests", e);
         }
@@ -83,6 +95,7 @@ public abstract class AbstractIntegrationTest {
 
         registry.add("jwt.private-key-path", () -> TEMP_PRIVATE_KEY.toUri().toString());
         registry.add("jwt.public-key-path", () -> TEMP_PUBLIC_KEY.toUri().toString());
+        registry.add("jwt.gateway-public-key-path", () -> TEMP_GATEWAY_PUBLIC_KEY.toUri().toString());
 
         registry.add("spring.mail.host", () -> "localhost");
         registry.add("spring.mail.port", () -> "2525");
@@ -165,9 +178,9 @@ public abstract class AbstractIntegrationTest {
     }
 
     /**
-     * Executes real HTTP login and returns the parsed JWT access token string.
+     * Executes real HTTP login and returns the raw access token signed with Identity Access private key.
      */
-    protected String loginAndGetToken(String email, String password) {
+    protected String loginAndGetRawToken(String email, String password) {
         LoginRequest loginRequest = LoginRequest.builder()
                 .email(email)
                 .password(password)
@@ -184,6 +197,65 @@ public abstract class AbstractIntegrationTest {
         assertThat(response.getBody().getAccessToken()).isNotBlank();
 
         return response.getBody().getAccessToken();
+    }
+
+    /**
+     * Re-signs a User JWT with the test Gateway private key, simulating the API Gateway
+     * validating the login token with Identity Access public key and forwarding a Gateway-signed token.
+     */
+    protected String reSignWithGatewayKey(String rawUserToken) {
+        io.jsonwebtoken.Jws<io.jsonwebtoken.Claims> claimsJws = io.jsonwebtoken.Jwts.parser()
+                .verifyWith(IDENTITY_KEY_PAIR.getPublic())
+                .build()
+                .parseSignedClaims(rawUserToken);
+        io.jsonwebtoken.Claims claims = claimsJws.getPayload();
+
+        return io.jsonwebtoken.Jwts.builder()
+                .subject(claims.getSubject())
+                .claim("type", claims.get("type"))
+                .claim("roles", claims.get("roles"))
+                .issuedAt(claims.getIssuedAt())
+                .expiration(claims.getExpiration())
+                .signWith(GATEWAY_KEY_PAIR.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .compact();
+    }
+
+    /**
+     * Executes real HTTP login and returns the Gateway-signed JWT access token string
+     * representing the incoming Bearer token forwarding through the API Gateway.
+     */
+    protected String loginAndGetToken(String email, String password) {
+        String rawToken = loginAndGetRawToken(email, password);
+        return reSignWithGatewayKey(rawToken);
+    }
+
+    /**
+     * Creates an incoming user token signed by the Gateway test private key.
+     */
+    protected String createGatewayUserToken(UUID userId, List<String> roles) {
+        java.time.Instant now = java.time.Instant.now();
+        return io.jsonwebtoken.Jwts.builder()
+                .subject(userId.toString())
+                .claim("type", "user")
+                .claim("roles", roles != null ? roles : List.of())
+                .issuedAt(java.util.Date.from(now))
+                .expiration(java.util.Date.from(now.plusSeconds(1800)))
+                .signWith(GATEWAY_KEY_PAIR.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .compact();
+    }
+
+    /**
+     * Creates an incoming service token signed by the Gateway test private key.
+     */
+    protected String createGatewayServiceToken(String serviceName) {
+        java.time.Instant now = java.time.Instant.now();
+        return io.jsonwebtoken.Jwts.builder()
+                .subject(serviceName)
+                .claim("type", "service")
+                .issuedAt(java.util.Date.from(now))
+                .expiration(java.util.Date.from(now.plusSeconds(300)))
+                .signWith(GATEWAY_KEY_PAIR.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .compact();
     }
 
     /**

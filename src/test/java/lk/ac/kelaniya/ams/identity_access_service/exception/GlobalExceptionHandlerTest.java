@@ -20,7 +20,7 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("UntrustedServiceException is mapped to 401 UNAUTHORIZED with standard JSON ErrorResponse (Rule 8)")
+    @DisplayName("UntrustedServiceException is mapped to 401 UNAUTHORIZED with safe message Authentication required (no echoed service names)")
     void testHandleUntrustedServiceException_returns401Unauthorized() {
         UntrustedServiceException exception = new UntrustedServiceException("Untrusted or unrecognized service: 'malicious-service'");
 
@@ -29,7 +29,34 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().getError().getCode()).isEqualTo("UNAUTHORIZED");
-        assertThat(response.getBody().getError().getMessage()).isEqualTo("Untrusted or unrecognized service: 'malicious-service'");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Authentication required");
+    }
+
+    @Test
+    @DisplayName("JwtException is mapped to 401 UNAUTHORIZED with safe message Authentication required")
+    void testHandleJwtException_returns401Unauthorized() {
+        io.jsonwebtoken.JwtException exception = new io.jsonwebtoken.JwtException("Malformed JWT");
+
+        ResponseEntity<ErrorResponse> response = exceptionHandler.handleJwtException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("UNAUTHORIZED");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Authentication required");
+    }
+
+    @Test
+    @DisplayName("AuthenticationException is mapped to 401 UNAUTHORIZED with safe message Authentication required")
+    void testHandleAuthenticationException_returns401Unauthorized() {
+        org.springframework.security.authentication.BadCredentialsException exception =
+                new org.springframework.security.authentication.BadCredentialsException("Bad credentials");
+
+        ResponseEntity<ErrorResponse> response = exceptionHandler.handleAuthenticationException(exception);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError().getCode()).isEqualTo("UNAUTHORIZED");
+        assertThat(response.getBody().getError().getMessage()).isEqualTo("Authentication required");
     }
 
     @Test

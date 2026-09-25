@@ -121,19 +121,42 @@ public class JwtService {
                 .claim("type", "service")
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(expiry))
-                .signWith(rsaKeyProvider.getPrivateKey(), Jwts.SIG.RS256)
+                .signWith(rsaKeyProvider.getServicePrivateKey(), Jwts.SIG.RS256)
                 .compact();
     }
 
     /**
-     * Parses and verifies an RS256-signed JWT against the configured public key.
-     * Explicitly enforces that the header algorithm is strictly RS256 before returning claims.
+     * Parses and verifies an incoming RS256-signed JWT against the Gateway public key.
+     * Enforces that the header algorithm is strictly RS256 before returning claims.
      *
      * @param token the compact JWT string
      * @return parsed JWS containing header and claims payload
      * @throws UnsupportedJwtException if token signing algorithm is not RS256
      */
     public Jws<Claims> parseAndValidateToken(String token) {
+        Jws<Claims> claimsJws = Jwts.parser()
+                .verifyWith(rsaKeyProvider.getGatewayPublicKey())
+                .build()
+                .parseSignedClaims(token);
+
+        String algorithm = claimsJws.getHeader().getAlgorithm();
+        if (!"RS256".equals(algorithm)) {
+            log.warn("Rejected JWT with disallowed algorithm: '{}'. Only RS256 is permitted.", algorithm);
+            throw new UnsupportedJwtException("Unsupported JWT algorithm: '" + algorithm + "'. Only RS256 is permitted.");
+        }
+
+        return claimsJws;
+    }
+
+    /**
+     * Parses and verifies a User JWT signed by Identity Access Service against the service's own public key.
+     * Used for validating tokens issued by this service at login.
+     *
+     * @param token the compact JWT string
+     * @return parsed JWS containing header and claims payload
+     * @throws UnsupportedJwtException if token signing algorithm is not RS256
+     */
+    public Jws<Claims> parseAndValidateUserToken(String token) {
         Jws<Claims> claimsJws = Jwts.parser()
                 .verifyWith(rsaKeyProvider.getPublicKey())
                 .build()

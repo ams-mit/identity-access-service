@@ -25,6 +25,26 @@ public class RsaKeyProperties {
     private String publicKeyPath;
 
     /**
+     * Path to the Gateway public key in X.509 PEM format for verifying incoming Bearer tokens (e.g. file:certs/gateway_public_key.pem).
+     */
+    private String gatewayPublicKeyPath;
+
+    /**
+     * Optional inline PEM string for Gateway public key.
+     */
+    private String gatewayPublicKey;
+
+    /**
+     * Path to the RSA private key in PKCS#8 PEM format for signing outbound Service JWTs (e.g. file:certs/service_private_key.pem).
+     */
+    private String servicePrivateKeyPath;
+
+    /**
+     * Optional inline PEM string for Service private key.
+     */
+    private String servicePrivateKey;
+
+    /**
      * Expiration time in seconds for issued JWTs (default: 1800 / 30 minutes).
      */
     private long expirationSeconds = 1800;

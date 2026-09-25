@@ -128,12 +128,12 @@ class InternalUserControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
-                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test
-    @DisplayName("GET /internal/v1/users/{userId} with SYSTEM_ADMINISTRATOR user token returns 403 FORBIDDEN")
-    void testGetUserForValidation_adminUserToken_returns403Forbidden() throws Exception {
+    @DisplayName("GET /internal/v1/users/{userId} with SYSTEM_ADMINISTRATOR user token returns 401 UNAUTHORIZED (token type isolation)")
+    void testGetUserForValidation_adminUserToken_returns401Unauthorized() throws Exception {
         UUID targetUserId = UUID.randomUUID();
         UUID adminId = UUID.randomUUID();
         String adminToken = "valid.admin.user.token";
@@ -143,13 +143,14 @@ class InternalUserControllerTest {
         mockMvc.perform(get("/internal/v1/users/{userId}", targetUserId)
                         .header("Authorization", "Bearer " + adminToken)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test
-    @DisplayName("GET /internal/v1/users/{userId} with normal resident user token returns 403 FORBIDDEN")
-    void testGetUserForValidation_regularUserToken_returns403Forbidden() throws Exception {
+    @DisplayName("GET /internal/v1/users/{userId} with normal resident user token returns 401 UNAUTHORIZED (token type isolation)")
+    void testGetUserForValidation_regularUserToken_returns401Unauthorized() throws Exception {
         UUID targetUserId = UUID.randomUUID();
         UUID residentId = UUID.randomUUID();
         String residentToken = "valid.resident.user.token";
@@ -159,8 +160,9 @@ class InternalUserControllerTest {
         mockMvc.perform(get("/internal/v1/users/{userId}", targetUserId)
                         .header("Authorization", "Bearer " + residentToken)
                         .accept(MediaType.APPLICATION_JSON))
-                .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test
@@ -172,7 +174,7 @@ class InternalUserControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
-                .andExpect(jsonPath("$.error.message", is("Full authentication is required to access this resource")));
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
     }
 
     @Test

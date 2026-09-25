@@ -56,9 +56,7 @@ public class SecurityConfig {
                             ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
                             ErrorResponse errorResponse = ErrorResponse.of(
                                     "UNAUTHORIZED",
-                                    authException != null && authException.getMessage() != null && !authException.getMessage().isBlank()
-                                            ? authException.getMessage()
-                                            : "Full authentication is required to access this resource"
+                                    "Authentication required"
                             );
                             response.getWriter().write(mapper.writeValueAsString(errorResponse));
                         })

@@ -41,6 +41,12 @@ public class RsaKeyProvider {
     private RSAPublicKey publicKey;
 
     @Getter
+    private RSAPublicKey gatewayPublicKey;
+
+    @Getter
+    private RSAPrivateKey servicePrivateKey;
+
+    @Getter
     private String keyId;
 
     @PostConstruct
@@ -54,6 +60,30 @@ public class RsaKeyProvider {
         this.privateKey = loadPrivateKey(properties.getPrivateKeyPath());
         this.publicKey = loadPublicKey(properties.getPublicKeyPath());
 
+        String gwKeyConfig = properties.getGatewayPublicKeyPath();
+        if (gwKeyConfig == null || gwKeyConfig.isBlank()) {
+            gwKeyConfig = properties.getGatewayPublicKey();
+        }
+        if (gwKeyConfig != null && !gwKeyConfig.isBlank()) {
+            this.gatewayPublicKey = loadPublicKey(gwKeyConfig);
+            log.info("Gateway public key successfully loaded and validated for incoming token verification.");
+        } else {
+            this.gatewayPublicKey = this.publicKey;
+            log.info("No gateway public key configured; defaulting to service public key for incoming token verification.");
+        }
+
+        String svcKeyConfig = properties.getServicePrivateKeyPath();
+        if (svcKeyConfig == null || svcKeyConfig.isBlank()) {
+            svcKeyConfig = properties.getServicePrivateKey();
+        }
+        if (svcKeyConfig != null && !svcKeyConfig.isBlank()) {
+            this.servicePrivateKey = loadPrivateKey(svcKeyConfig);
+            log.info("Service private key successfully loaded and validated for service token signing.");
+        } else {
+            this.servicePrivateKey = this.privateKey;
+            log.info("No service private key configured; defaulting to user signing private key for service tokens.");
+        }
+
         log.info("RSA key pair successfully loaded and validated for RS256 signing and verification.");
     }
 
@@ -64,6 +94,13 @@ public class RsaKeyProvider {
         }
 
         try {
+            if (path.contains(PRIVATE_KEY_HEADER)) {
+                byte[] keyBytes = extractPemBytes(path, PRIVATE_KEY_HEADER, PRIVATE_KEY_FOOTER);
+                PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(keyBytes);
+                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                return (RSAPrivateKey) keyFactory.generatePrivate(keySpec);
+            }
+
             Resource resource = resolveResource(path);
             if (resource == null || !resource.exists()) {
                 throw new IllegalStateException(
@@ -92,6 +129,13 @@ public class RsaKeyProvider {
         }
 
         try {
+            if (path.contains(PUBLIC_KEY_HEADER)) {
+                byte[] keyBytes = extractPemBytes(path, PUBLIC_KEY_HEADER, PUBLIC_KEY_FOOTER);
+                X509EncodedKeySpec keySpec = new X509EncodedKeySpec(keyBytes);
+                KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+                return (RSAPublicKey) keyFactory.generatePublic(keySpec);
+            }
+
             Resource resource = resolveResource(path);
             if (resource == null || !resource.exists()) {
                 throw new IllegalStateException(

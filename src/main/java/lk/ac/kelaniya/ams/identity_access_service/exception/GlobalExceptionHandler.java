@@ -102,7 +102,7 @@ public class GlobalExceptionHandler {
         log.warn("Untrusted service rejection: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
     }
 
     @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
@@ -110,7 +110,7 @@ public class GlobalExceptionHandler {
         log.warn("Authentication failed: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
     }
 
     @ExceptionHandler(io.jsonwebtoken.JwtException.class)
@@ -118,7 +118,7 @@ public class GlobalExceptionHandler {
         log.warn("JWT validation failed: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
-                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
     }
 
     @ExceptionHandler(AccountStatusException.class)

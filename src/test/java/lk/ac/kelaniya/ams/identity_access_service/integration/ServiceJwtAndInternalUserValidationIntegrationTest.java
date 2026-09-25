@@ -43,7 +43,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
                 .claim("type", "service")
                 .issuedAt(java.util.Date.from(now))
                 .expiration(java.util.Date.from(now.plusSeconds(300)))
-                .signWith(rsaKeyProvider.getPrivateKey(), io.jsonwebtoken.Jwts.SIG.RS256)
+                .signWith(GATEWAY_KEY_PAIR.getPrivate(), io.jsonwebtoken.Jwts.SIG.RS256)
                 .compact();
     }
 
@@ -80,8 +80,8 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     }
 
     @Test
-    @DisplayName("Critical Security Test: Valid SYSTEM_ADMINISTRATOR user token is REJECTED (403) from internal endpoint")
-    void testInternalUserEndpoint_systemAdminUserToken_returns403Forbidden() {
+    @DisplayName("Critical Security Test: Valid SYSTEM_ADMINISTRATOR user token is REJECTED (401) from internal endpoint (token type isolation)")
+    void testInternalUserEndpoint_systemAdminUserToken_returns401Unauthorized() {
         seedAdminUser("sysadmin.isolated@ams.lk", "AdminPass123!");
         String adminToken = loginAndGetToken("sysadmin.isolated@ams.lk", "AdminPass123!");
 
@@ -95,13 +95,13 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
                 String.class
         );
 
-        // Administrator privilege must NOT leak into internal service-to-service access
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        // User token must be rejected with 401 UNAUTHORIZED on internal endpoint (token type isolation)
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
-    @DisplayName("Regular user token (TENANT_RESIDENT) is REJECTED (403) from internal endpoint")
-    void testInternalUserEndpoint_regularUserToken_returns403Forbidden() {
+    @DisplayName("Regular user token (TENANT_RESIDENT) is REJECTED (401) from internal endpoint (token type isolation)")
+    void testInternalUserEndpoint_regularUserToken_returns401Unauthorized() {
         seedUserWithRole("resident.user@ams.lk", "ResidentPass123!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
         String residentToken = loginAndGetToken("resident.user@ams.lk", "ResidentPass123!");
 
@@ -115,7 +115,8 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
                 String.class
         );
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        // User token must be rejected with 401 UNAUTHORIZED on internal endpoint (token type isolation)
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -136,6 +137,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         JsonNode jsonNode = objectMapper.readTree(response.getBody());
         assertThat(jsonNode.has("error")).isTrue();
         assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(jsonNode.get("error").get("message").asText()).isEqualTo("Authentication required");
     }
 
     @Test
@@ -172,8 +174,8 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     }
 
     @Test
-    @DisplayName("Service token is denied from accessing user profile endpoint GET /api/v1/users/me")
-    void testServiceToken_deniedFromUserProfileEndpoint() {
+    @DisplayName("Service token on user endpoint GET /api/v1/users/me returns 401 UNAUTHORIZED (token type isolation)")
+    void testServiceToken_deniedFromUserProfileEndpoint() throws Exception {
         String serviceToken = createForeignServiceToken("operations-service");
         HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
 
@@ -184,8 +186,11 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
                 String.class
         );
 
-        // Service token does not represent a human user principal
-        assertThat(response.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+        // Service token does not represent a human user principal -> 401 UNAUTHORIZED
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode jsonNode = objectMapper.readTree(response.getBody());
+        assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(jsonNode.get("error").get("message").asText()).isEqualTo("Authentication required");
     }
 
     @Test
@@ -238,6 +243,7 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         JsonNode jsonNode = objectMapper.readTree(response.getBody());
         assertThat(jsonNode.has("error")).isTrue();
         assertThat(jsonNode.get("error").get("code").asText()).isEqualTo("UNAUTHORIZED");
+        assertThat(jsonNode.get("error").get("message").asText()).isEqualTo("Authentication required");
     }
 
     @Test
@@ -256,5 +262,22 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("existing.user@ams.lk");
+    }
+
+    @Test
+    @DisplayName("Incoming token signed with Identity Access private key is REJECTED (401) because filter verifies only with Gateway public key")
+    void testIncomingToken_signedWithIdentityAccessKey_returns401Unauthorized() {
+        seedUserWithRole("raw.key.user@ams.lk", "RawPass123!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
+        String rawToken = loginAndGetRawToken("raw.key.user@ams.lk", "RawPass123!");
+
+        HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(rawToken));
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/api/v1/users/me",
+                HttpMethod.GET,
+                requestEntity,
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 }

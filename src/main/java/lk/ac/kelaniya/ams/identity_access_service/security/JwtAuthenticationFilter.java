@@ -46,6 +46,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = claimsJws.getPayload();
                 String tokenType = claims.get("type", String.class);
 
+                String path = request.getServletPath() != null && !request.getServletPath().isBlank()
+                        ? request.getServletPath()
+                        : (request.getRequestURI() != null ? request.getRequestURI() : "");
+
+                if ((path.startsWith("/internal/") || (request.getRequestURI() != null && request.getRequestURI().startsWith("/internal/")))
+                        && !"service".equals(tokenType)) {
+                    log.warn("Rejected token with type '{}' on internal endpoint '{}'. Only service tokens are permitted.", tokenType, path);
+                    throw new JwtException("Authentication required");
+                }
+
+                if ((path.startsWith("/api/") || (request.getRequestURI() != null && request.getRequestURI().startsWith("/api/")))
+                        && !"user".equals(tokenType)) {
+                    log.warn("Rejected token with type '{}' on user API endpoint '{}'. Only user tokens are permitted.", tokenType, path);
+                    throw new JwtException("Authentication required");
+                }
+
                 if ("service".equals(tokenType)) {
                     String serviceName = claims.getSubject();
                     if (serviceName == null || serviceName.isBlank()) {
