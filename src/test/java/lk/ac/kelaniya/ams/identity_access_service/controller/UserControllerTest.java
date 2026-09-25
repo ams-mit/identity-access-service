@@ -60,9 +60,20 @@ class UserControllerTest {
         Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
         Claims claims = mock(Claims.class);
         given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(userId.toString());
         given(claims.get("email", String.class)).willReturn(email);
         given(claims.get("roles", List.class)).willReturn(roles);
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+    }
+
+    private void mockValidServiceToken(String token, String serviceName) {
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("service");
+        given(claims.getSubject()).willReturn(serviceName);
         given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
     }
 
@@ -375,5 +386,38 @@ class UserControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users/me with valid service token returns 403 FORBIDDEN")
+    void testGetCurrentUser_serviceToken_returns403Forbidden() throws Exception {
+        String serviceToken = "valid.service.token";
+        mockValidServiceToken(serviceToken, "billing-payment-service");
+
+        mockMvc.perform(get("/api/v1/users/me")
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("PUT /api/v1/users/me/password with valid service token returns 403 FORBIDDEN")
+    void testChangePassword_serviceToken_returns403Forbidden() throws Exception {
+        String serviceToken = "valid.service.token";
+        mockValidServiceToken(serviceToken, "billing-payment-service");
+
+        ChangePasswordRequest request = ChangePasswordRequest.builder()
+                .currentPassword("OldP@ssword123")
+                .newPassword("NewP@ssword456")
+                .confirmNewPassword("NewP@ssword456")
+                .build();
+
+        mockMvc.perform(put("/api/v1/users/me/password")
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
     }
 }
