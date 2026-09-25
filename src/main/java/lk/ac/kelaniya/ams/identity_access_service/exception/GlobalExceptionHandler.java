@@ -97,6 +97,30 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("INVALID_CREDENTIALS", ex.getMessage()));
     }
 
+    @ExceptionHandler(UntrustedServiceException.class)
+    public ResponseEntity<ErrorResponse> handleUntrustedServiceException(UntrustedServiceException ex) {
+        log.warn("Untrusted service rejection: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthenticationException(org.springframework.security.core.AuthenticationException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(io.jsonwebtoken.JwtException.class)
+    public ResponseEntity<ErrorResponse> handleJwtException(io.jsonwebtoken.JwtException ex) {
+        log.warn("JWT validation failed: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", ex.getMessage()));
+    }
+
     @ExceptionHandler(AccountStatusException.class)
     public ResponseEntity<ErrorResponse> handleAccountStatusException(AccountStatusException ex) {
         log.warn("Account status access rejected: {} - {}", ex.getErrorCode(), ex.getMessage());

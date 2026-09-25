@@ -92,7 +92,6 @@ class JwtAuthenticationFilterTest {
         given(claimsJws.getPayload()).willReturn(claims);
         given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(userId.toString());
-        given(claims.get("email", String.class)).willReturn(email);
         given(claims.get("roles", List.class)).willReturn(List.of("TENANT_RESIDENT"));
         given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
 
@@ -109,7 +108,7 @@ class JwtAuthenticationFilterTest {
 
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         assertThat(principal.getUserId()).isEqualTo(userId);
-        assertThat(principal.getEmail()).isEqualTo(email);
+        assertThat(principal.getEmail()).isNull();
         assertThat(principal.getRoles()).containsExactly("TENANT_RESIDENT");
 
         List<String> authorityNames = auth.getAuthorities().stream()
@@ -237,6 +236,29 @@ class JwtAuthenticationFilterTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer " + invalidToken);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain filterChain = new MockFilterChain();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+    }
+
+    @Test
+    @DisplayName("Service token with untrusted/unregistered service name is rejected and clears SecurityContext (Rule 8)")
+    void testDoFilterInternal_untrustedService_clearsSecurityContext() throws Exception {
+        String token = "untrusted.service.token";
+
+        @SuppressWarnings("unchecked")
+        Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
+        Claims claims = mock(Claims.class);
+        given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("service");
+        given(claims.getSubject()).willReturn("untrusted-malicious-service");
+        given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer " + token);
         MockHttpServletResponse response = new MockHttpServletResponse();
         MockFilterChain filterChain = new MockFilterChain();
 
