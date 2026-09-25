@@ -9,8 +9,8 @@ spring:
     username: ${SMTP_USERNAME:}
     password: ${SMTP_PASSWORD:${SMTP_APP_PASSWORD:}}
 jwt:
-  private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
-  public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
+  private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH:}
   expiration-seconds: 3600
 auth:
   password-reset:

@@ -52,7 +52,7 @@ Verify or configure the variables in `.env`:
 - `DB_URL`: JDBC URL for MySQL (default: `jdbc:mysql://localhost:3306/identity_db`)
 - `DB_USERNAME` / `DB_PASSWORD`: MySQL database credentials (default: `identity_user` / `identity_pass`)
 - `SERVER_PORT`: Application HTTP port (default: `8080`)
-- `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH`: RSA PEM key paths (default: `classpath:certs/private_key.pem`, `classpath:certs/public_key.pem`)
+- `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH`: RSA PEM key paths (e.g. `file:certs/private_key.pem`, `file:certs/public_key.pem`; required, no bundled fallback)
 
 ### 3. Start MySQL via Docker
 
@@ -68,9 +68,13 @@ docker run --name identity-mysql \
   -d mysql:8.0
 ```
 
-### 4. Generate Local RSA Key Pair (RS256)
+### 4. Security / Key Setup
 
-The service signs JWTs using RS256 asymmetric keys and requires a private/public key pair. You can generate a 2048-bit RSA key pair in PKCS#8 / X.509 PEM format using the included generator:
+The service signs JWTs using RS256 asymmetric keys and requires an externally-supplied private/public key pair. **No real or default key material is committed to the repository or packaged into build artifacts.** The application enforces fail-fast startup: if `JWT_PRIVATE_KEY_PATH` or `JWT_PUBLIC_KEY_PATH` is unset or points to an invalid/missing file, application context startup terminates immediately with a descriptive `IllegalStateException`.
+
+#### Generating a Local Development Keypair
+
+For local development, you can generate a 2048-bit RSA keypair in PKCS#8 / X.509 PEM format using the included generator:
 
 ```bash
 # Linux / macOS
@@ -80,7 +84,7 @@ The service signs JWTs using RS256 asymmetric keys and requires a private/public
 .\mvnw.cmd compile exec:java -Dexec.mainClass="lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator"
 ```
 
-This generates `certs/private_key.pem` and `certs/public_key.pem` in the project root. Alternatively, using OpenSSL:
+This generates `certs/private_key.pem` and `certs/public_key.pem` in the root `certs/` folder. Alternatively, using OpenSSL:
 
 ```bash
 mkdir -p certs
@@ -88,11 +92,12 @@ openssl genpkey -algorithm RSA -out certs/private_key.pem -pkeyopt rsa_keygen_bi
 openssl rsa -pubout -in certs/private_key.pem -out certs/public_key.pem
 ```
 
-> **Note on Key Provisioning & Security**:
-> - Key files in `certs/` and `*.pem` are ignored by git and must **never** be committed.
-> - **Local Development**: Generate a keypair using the commands above and configure paths in your `.env` file via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` (or rely on default `classpath:certs/`).
-> - **Production / Deployed Environments**: A real, cryptographically secure 2048-bit (or 4096-bit) RSA keypair must be provisioned before application startup via your deployment secrets infrastructure (e.g. Kubernetes Secrets, AWS Secrets Manager, HashiCorp Vault, or mounted secret volumes). Provide the file or URI locations via `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` environment variables.
-> - **Automated Tests (CI & Local)**: Test suites (`IdentityAccessServiceApplicationTests` and `AbstractIntegrationTest`) automatically provision ephemeral, throwaway RSA keypairs at test runtime, ensuring automated builds and CI runs remain completely self-contained with no pre-existing key files required.
+#### Key Storage & Provisioning Rules
+
+> - **Key Storage Location**: Local key files must live **strictly within the gitignored `certs/` directory** in the project root or outside the repository tree altogether. Never move keys to `src/main/resources` or any trackable location.
+> - **Never Commit Keys**: `.gitignore` strictly blocks `*.pem`, `*.key`, `*private*`, and `certs/`. Committing real private keys is a critical security violation.
+> - **Production Environments**: Production keys must **never** be generated with local utilities or stored in filesystems manually. Real 2048-bit (or 4096-bit) RSA keypairs must be provisioned via your deployment secrets infrastructure (e.g., Kubernetes Secrets, AWS Secrets Manager, HashiCorp Vault, or mounted secret volumes). Set `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` environment variables pointing to the mounted secret paths.
+> - **Automated Tests**: Integration and unit test suites (`IdentityAccessServiceApplicationTests`, `AbstractIntegrationTest`, `RsaKeyProviderTest`, `JwtServiceTest`) automatically generate ephemeral, throwaway keypairs in temporary directories at test runtime. No pre-existing key files are required to run builds or CI.
 
 ### 5. Run the Application
 

@@ -117,6 +117,7 @@ class RsaKeyProviderTest {
     @DisplayName("Application context fails to start with clear error when RSA keys are missing")
     void testApplicationContextStartupFailsWhenKeysMissing() {
         new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration.class))
                 .withUserConfiguration(RsaKeyProperties.class, RsaKeyProvider.class)
                 .withPropertyValues(
                         "jwt.private-key-path=file:non_existent_path/private.pem",
@@ -129,5 +130,54 @@ class RsaKeyProviderTest {
                     assertThat(context.getStartupFailure().getCause())
                             .hasMessageContaining("RSA private key");
                 });
+    }
+
+    @Test
+    @DisplayName("Application context fails to start with clear error when private key path is completely unset in non-local profile")
+    void testApplicationContextStartupFailsWhenPrivateKeyPathUnsetInNonLocalProfile() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration.class))
+                .withUserConfiguration(RsaKeyProperties.class, RsaKeyProvider.class)
+                .withPropertyValues("spring.profiles.active=docker")
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalStateException.class);
+                    assertThat(context.getStartupFailure().getCause())
+                            .hasMessageContaining("RSA private key path is not configured");
+                });
+    }
+
+    @Test
+    @DisplayName("Application context fails to start with clear error when public key path is completely unset in non-local profile")
+    void testApplicationContextStartupFailsWhenPublicKeyPathUnsetInNonLocalProfile() {
+        new ApplicationContextRunner()
+                .withConfiguration(AutoConfigurations.of(org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration.class))
+                .withUserConfiguration(RsaKeyProperties.class, RsaKeyProvider.class)
+                .withPropertyValues(
+                        "spring.profiles.active=docker",
+                        "jwt.private-key-path=" + privateKeyFile.toUri().toString()
+                )
+                .run(context -> {
+                    assertThat(context).hasFailed();
+                    assertThat(context.getStartupFailure())
+                            .hasRootCauseInstanceOf(IllegalStateException.class);
+                    assertThat(context.getStartupFailure().getCause())
+                            .hasMessageContaining("RSA public key path is not configured");
+                });
+    }
+
+    @Test
+    @DisplayName("Should load RSA keypair from externally-supplied file: URI path")
+    void testLoadKeys_externalFilePath() {
+        properties.setPrivateKeyPath("file:" + privateKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        properties.setPublicKeyPath("file:" + publicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        properties.setKeyId("external-file-kid");
+
+        provider.init();
+
+        assertThat(provider.getPrivateKey()).isNotNull().isInstanceOf(RSAPrivateKey.class);
+        assertThat(provider.getPublicKey()).isNotNull().isInstanceOf(RSAPublicKey.class);
+        assertThat(provider.getKeyId()).isEqualTo("external-file-kid");
     }
 }
