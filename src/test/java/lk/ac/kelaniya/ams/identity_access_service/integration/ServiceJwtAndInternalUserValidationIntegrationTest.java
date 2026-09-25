@@ -194,6 +194,24 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
     }
 
     @Test
+    @DisplayName("Valid service token from NON-allow-listed service is REJECTED (403) from internal endpoint (Rule 10)")
+    void testInternalUserEndpoint_nonAllowListedService_returns403Forbidden() {
+        User user = seedUserWithRole("resident.nonallowed@ams.lk", "SecurePass1!", "TENANT_RESIDENT", AccountStatus.ACTIVE);
+
+        String serviceToken = createForeignServiceToken("unauthorized-analytics-service");
+        HttpEntity<Void> requestEntity = new HttpEntity<>(authHeaders(serviceToken));
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/internal/v1/users/" + user.getId(),
+                HttpMethod.GET,
+                requestEntity,
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     @DisplayName("Existing user flows remain completely unaffected by service token introduction")
     void testExistingUserFlows_unaffected() {
         seedUserWithRole("existing.user@ams.lk", "StandardPass1!", "TENANT_RESIDENT", AccountStatus.ACTIVE);

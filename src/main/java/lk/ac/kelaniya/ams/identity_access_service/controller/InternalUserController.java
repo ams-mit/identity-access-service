@@ -10,10 +10,16 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.InternalUserResponse;
+import lk.ac.kelaniya.ams.identity_access_service.security.InternalCallerAuthorizationService;
+import lk.ac.kelaniya.ams.identity_access_service.security.ServicePrincipal;
 import lk.ac.kelaniya.ams.identity_access_service.service.InternalUserService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +32,7 @@ import java.util.UUID;
  * strictly for service-to-service communication.
  * Not routed through public API Gateway paths.
  */
+@Slf4j
 @RestController
 @RequestMapping("/internal/v1/users")
 @RequiredArgsConstructor
@@ -36,6 +43,7 @@ import java.util.UUID;
 public class InternalUserController {
 
     private final InternalUserService internalUserService;
+    private final InternalCallerAuthorizationService internalCallerAuthorizationService;
 
     @GetMapping("/{userId}")
     @PreAuthorize("hasRole('SERVICE')")
@@ -77,6 +85,19 @@ public class InternalUserController {
             @Parameter(description = "Unique user identifier to validate", required = true, example = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d")
             @PathVariable UUID userId
     ) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String callerServiceName = (auth != null && auth.getPrincipal() instanceof ServicePrincipal sp)
+                ? sp.getServiceName()
+                : null;
+
+        if (callerServiceName == null || !internalCallerAuthorizationService.isAllowed(callerServiceName, InternalCallerAuthorizationService.USER_VALIDATION_ENDPOINT)) {
+            log.warn("Access denied: Caller service '{}' is not authorized to access internal endpoint '/internal/v1/users/{}'",
+                    callerServiceName != null ? callerServiceName : "anonymous", userId);
+            throw new AccessDeniedException(
+                    "Caller service '" + callerServiceName + "' is not authorized to access internal endpoint 'user-validation'"
+            );
+        }
+
         InternalUserResponse response = internalUserService.getUserForValidation(userId);
         return ResponseEntity.ok(response);
     }

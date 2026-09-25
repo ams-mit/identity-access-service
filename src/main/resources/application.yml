@@ -30,6 +30,16 @@ jwt:
   public-key-path: ${JWT_PUBLIC_KEY_PATH:}
   expiration-seconds: 1800
   service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
+internal-api:
+  allowed-callers:
+    user-validation:
+      - resident-management-service
+      - lease-occupancy-service
+      - billing-payment-service
+      - utility-charge-service
+      - operations-service
+      - community-service
+      - property-unit-service
 auth:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}

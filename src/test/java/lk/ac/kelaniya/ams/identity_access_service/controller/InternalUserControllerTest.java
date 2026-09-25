@@ -31,8 +31,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import lk.ac.kelaniya.ams.identity_access_service.security.InternalCallerAuthorizationService;
+
 @WebMvcTest(InternalUserController.class)
-@Import({SecurityConfig.class, GlobalExceptionHandler.class})
+@Import({SecurityConfig.class, GlobalExceptionHandler.class, InternalCallerAuthorizationService.class})
 class InternalUserControllerTest {
 
     @Autowired
@@ -64,7 +66,6 @@ class InternalUserControllerTest {
         given(claimsJws.getPayload()).willReturn(claims);
         given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(userId.toString());
-        given(claims.get("email", String.class)).willReturn(email);
         given(claims.get("roles", List.class)).willReturn(roles);
         given(jwtService.parseAndValidateToken(token)).willReturn(claimsJws);
     }
@@ -96,6 +97,21 @@ class InternalUserControllerTest {
                 .andExpect(jsonPath("$.passwordHash").doesNotExist())
                 .andExpect(jsonPath("$.firstName").doesNotExist())
                 .andExpect(jsonPath("$.lastName").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("GET /internal/v1/users/{userId} with valid service token from NON-allow-listed service returns 403 FORBIDDEN")
+    void testGetUserForValidation_nonAllowListedServiceToken_returns403Forbidden() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "valid.unauthorized.service.token";
+
+        mockValidServiceToken(serviceToken, "unauthorized-analytics-service");
+
+        mockMvc.perform(get("/internal/v1/users/{userId}", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
     }
 
     @Test
