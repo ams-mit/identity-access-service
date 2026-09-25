@@ -11,7 +11,8 @@ spring:
 jwt:
   private-key-path: ${JWT_PRIVATE_KEY_PATH:}
   public-key-path: ${JWT_PUBLIC_KEY_PATH:}
-  expiration-seconds: 3600
+  expiration-seconds: 1800
+  service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
 auth:
   password-reset:
     token-validity-minutes: 30
