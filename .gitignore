@@ -36,7 +36,14 @@ build/
 application-secrets.yml
 *.pem
 *.key
+certs/*.pem
+certs/*.key
+*private*
+*private*.pem
+*private*.key
 .env
+.env.*
 certs/
+**/certs/
 src/main/resources/certs/
 
