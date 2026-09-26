@@ -13,5 +13,6 @@ public enum AuditEventType {
     PASSWORD_RESET,
     LOGIN_SUCCESS,
     LOGIN_FAILED,
-    ACCOUNT_LOCKED
+    ACCOUNT_LOCKED,
+    EMAIL_CHANGED
 }
