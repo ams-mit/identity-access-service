@@ -43,6 +43,8 @@ class JwtServiceTest {
 
         properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
         properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setGatewayPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setServicePrivateKeyPath(privateKeyFile.toUri().toString());
 
         rsaKeyProvider = new RsaKeyProvider(properties, new DefaultResourceLoader());
         rsaKeyProvider.init();

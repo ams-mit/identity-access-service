@@ -64,25 +64,23 @@ public class RsaKeyProvider {
         if (gwKeyConfig == null || gwKeyConfig.isBlank()) {
             gwKeyConfig = properties.getGatewayPublicKey();
         }
-        if (gwKeyConfig != null && !gwKeyConfig.isBlank()) {
-            this.gatewayPublicKey = loadPublicKey(gwKeyConfig);
-            log.info("Gateway public key successfully loaded and validated for incoming token verification.");
-        } else {
-            this.gatewayPublicKey = this.publicKey;
-            log.info("No gateway public key configured; defaulting to service public key for incoming token verification.");
+        if (gwKeyConfig == null || gwKeyConfig.isBlank()) {
+            throw new IllegalStateException(
+                    "Gateway public key is not configured. Please set 'jwt.gateway-public-key-path' or environment variable GATEWAY_JWT_PUBLIC_KEY.");
         }
+        this.gatewayPublicKey = loadPublicKey(gwKeyConfig);
+        log.info("Gateway public key successfully loaded and validated for incoming token verification.");
 
         String svcKeyConfig = properties.getServicePrivateKeyPath();
         if (svcKeyConfig == null || svcKeyConfig.isBlank()) {
             svcKeyConfig = properties.getServicePrivateKey();
         }
-        if (svcKeyConfig != null && !svcKeyConfig.isBlank()) {
-            this.servicePrivateKey = loadPrivateKey(svcKeyConfig);
-            log.info("Service private key successfully loaded and validated for service token signing.");
-        } else {
-            this.servicePrivateKey = this.privateKey;
-            log.info("No service private key configured; defaulting to user signing private key for service tokens.");
+        if (svcKeyConfig == null || svcKeyConfig.isBlank()) {
+            throw new IllegalStateException(
+                    "Service private key is not configured. Please set 'jwt.service-private-key-path' or environment variable SERVICE_JWT_PRIVATE_KEY.");
         }
+        this.servicePrivateKey = loadPrivateKey(svcKeyConfig);
+        log.info("Service private key successfully loaded and validated for service token signing.");
 
         log.info("RSA key pair successfully loaded and validated for RS256 signing and verification.");
     }

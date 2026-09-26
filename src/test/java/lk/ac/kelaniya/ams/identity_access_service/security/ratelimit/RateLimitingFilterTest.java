@@ -14,6 +14,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -301,5 +302,125 @@ class RateLimitingFilterTest {
 
         assertThat(afterRefillRes.getStatus()).isEqualTo(HttpStatus.OK.value());
         verify(refilledChain, times(1)).doFilter(afterRefillReq, afterRefillRes);
+    }
+
+    @Test
+    @DisplayName("Trusted proxy + X-Forwarded-For: resolves and rate-limits by the forwarded client IP, not proxy IP")
+    void testTrustedProxyWithForwardedFor_usesHeaderIp() throws ServletException, IOException {
+        String trustedProxyIp = "10.0.0.1";
+        String clientIp = "203.0.113.195";
+        String path = "/api/v1/auth/login";
+
+        // Filter configured with trusted proxy (supports both IP and CIDR)
+        RateLimitingFilter proxyFilter = new RateLimitingFilter(
+                rateLimitingService,
+                objectMapper,
+                List.of("10.0.0.1", "172.16.0.0/16")
+        );
+
+        // 10 requests from clientIp forwarded via trustedProxyIp succeed
+        for (int i = 1; i <= 10; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", path);
+            req.setRemoteAddr(trustedProxyIp);
+            req.addHeader("X-Forwarded-For", clientIp + ", " + trustedProxyIp);
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+
+            proxyFilter.doFilter(req, res, chain);
+            assertThat(res.getStatus()).isEqualTo(HttpStatus.OK.value());
+            verify(chain, times(1)).doFilter(req, res);
+        }
+
+        // 11th request for clientIp forwarded via trustedProxyIp is blocked (429)
+        MockHttpServletRequest blockedReq = new MockHttpServletRequest("POST", path);
+        blockedReq.setRemoteAddr(trustedProxyIp);
+        blockedReq.addHeader("X-Forwarded-For", clientIp);
+        MockHttpServletResponse blockedRes = new MockHttpServletResponse();
+        FilterChain blockedChain = mock(FilterChain.class);
+
+        proxyFilter.doFilter(blockedReq, blockedRes, blockedChain);
+        assertThat(blockedRes.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        verify(blockedChain, never()).doFilter(blockedReq, blockedRes);
+    }
+
+    @Test
+    @DisplayName("Untrusted source + X-Forwarded-For: ignores header and uses remoteAddr directly")
+    void testUntrustedSourceWithForwardedFor_ignoresHeader() throws ServletException, IOException {
+        String untrustedIp = "198.51.100.2";
+        String spoofedClientIp = "203.0.113.50";
+        String path = "/api/v1/auth/login";
+
+        // Filter configured with trusted proxy that does NOT match untrustedIp
+        RateLimitingFilter proxyFilter = new RateLimitingFilter(
+                rateLimitingService,
+                objectMapper,
+                List.of("10.0.0.1", "172.16.0.0/16")
+        );
+
+        // Exhaust all 10 permits using untrustedIp with spoofed header
+        for (int i = 1; i <= 10; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", path);
+            req.setRemoteAddr(untrustedIp);
+            req.addHeader("X-Forwarded-For", spoofedClientIp);
+            MockHttpServletResponse res = new MockHttpServletResponse();
+            FilterChain chain = mock(FilterChain.class);
+
+            proxyFilter.doFilter(req, res, chain);
+            assertThat(res.getStatus()).isEqualTo(HttpStatus.OK.value());
+        }
+
+        // 11th request from untrustedIp with a DIFFERENT spoofed header is BLOCKED
+        // because the filter tracks untrustedIp (remoteAddr), ignoring spoofed headers
+        MockHttpServletRequest blockedReq = new MockHttpServletRequest("POST", path);
+        blockedReq.setRemoteAddr(untrustedIp);
+        blockedReq.addHeader("X-Forwarded-For", "192.0.2.99");
+        MockHttpServletResponse blockedRes = new MockHttpServletResponse();
+        FilterChain blockedChain = mock(FilterChain.class);
+
+        proxyFilter.doFilter(blockedReq, blockedRes, blockedChain);
+        assertThat(blockedRes.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+        verify(blockedChain, never()).doFilter(blockedReq, blockedRes);
+    }
+
+    @Test
+    @DisplayName("Two different forwarded IPs behind the same trusted proxy get separate rate-limit buckets")
+    void testTwoDifferentForwardedIps_getSeparateBuckets() throws ServletException, IOException {
+        String trustedProxyIp = "10.0.0.1";
+        String clientA = "203.0.113.10";
+        String clientB = "203.0.113.20";
+        String path = "/api/v1/auth/login";
+
+        RateLimitingFilter proxyFilter = new RateLimitingFilter(
+                rateLimitingService,
+                objectMapper,
+                List.of("10.0.0.1")
+        );
+
+        // Client A exhausts all 10 permits through the proxy
+        for (int i = 0; i < 10; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", path);
+            req.setRemoteAddr(trustedProxyIp);
+            req.addHeader("X-Forwarded-For", clientA);
+            proxyFilter.doFilter(req, new MockHttpServletResponse(), mock(FilterChain.class));
+        }
+
+        // Client A 11th request is blocked
+        MockHttpServletRequest blockedReqA = new MockHttpServletRequest("POST", path);
+        blockedReqA.setRemoteAddr(trustedProxyIp);
+        blockedReqA.addHeader("X-Forwarded-For", clientA);
+        MockHttpServletResponse blockedResA = new MockHttpServletResponse();
+        proxyFilter.doFilter(blockedReqA, blockedResA, mock(FilterChain.class));
+        assertThat(blockedResA.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS.value());
+
+        // Client B sending through the exact same proxy is NOT blocked (has its own bucket)
+        MockHttpServletRequest allowedReqB = new MockHttpServletRequest("POST", path);
+        allowedReqB.setRemoteAddr(trustedProxyIp);
+        allowedReqB.addHeader("X-Forwarded-For", clientB);
+        MockHttpServletResponse allowedResB = new MockHttpServletResponse();
+        FilterChain chainB = mock(FilterChain.class);
+
+        proxyFilter.doFilter(allowedReqB, allowedResB, chainB);
+        assertThat(allowedResB.getStatus()).isEqualTo(HttpStatus.OK.value());
+        verify(chainB, times(1)).doFilter(allowedReqB, allowedResB);
     }
 }

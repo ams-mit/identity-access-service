@@ -2,6 +2,7 @@ package lk.ac.kelaniya.ams.identity_access_service.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingFilter;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingProperties;
 import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +20,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
+import java.util.List;
+
 /**
  * Spring Security configuration permitting public endpoints for registration, login, JWKS, and OpenAPI,
  * enforcing Bearer JWT authentication on protected endpoints, and enabling method-level security for RBAC.
@@ -33,6 +36,9 @@ public class SecurityConfig {
 
     @Autowired(required = false)
     private RateLimitingService rateLimitingService;
+
+    @Autowired(required = false)
+    private RateLimitingProperties rateLimitingProperties;
 
     @Autowired(required = false)
     private ObjectMapper objectMapper;
@@ -91,7 +97,8 @@ public class SecurityConfig {
                 );
 
         if (rateLimitingService != null && objectMapper != null) {
-            http.addFilterBefore(new RateLimitingFilter(rateLimitingService, objectMapper), UsernamePasswordAuthenticationFilter.class);
+            List<String> trustedProxies = (rateLimitingProperties != null) ? rateLimitingProperties.getTrustedProxies() : List.of();
+            http.addFilterBefore(new RateLimitingFilter(rateLimitingService, objectMapper, trustedProxies), UsernamePasswordAuthenticationFilter.class);
         }
 
         if (jwtService != null) {
