@@ -8,9 +8,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Servlet filter that intercepts incoming HTTP requests to enforce rate limits on public unauthenticated auth endpoints.
@@ -20,10 +22,22 @@ public class RateLimitingFilter extends OncePerRequestFilter {
 
     private final RateLimitingService rateLimitingService;
     private final ObjectMapper objectMapper;
+    private final List<IpAddressMatcher> trustedProxyMatchers;
 
     public RateLimitingFilter(RateLimitingService rateLimitingService, ObjectMapper objectMapper) {
+        this(rateLimitingService, objectMapper, List.of());
+    }
+
+    public RateLimitingFilter(RateLimitingService rateLimitingService, ObjectMapper objectMapper, List<String> trustedProxies) {
         this.rateLimitingService = rateLimitingService;
         this.objectMapper = objectMapper;
+        this.trustedProxyMatchers = (trustedProxies != null)
+                ? trustedProxies.stream()
+                        .filter(p -> p != null && !p.isBlank())
+                        .map(String::trim)
+                        .map(IpAddressMatcher::new)
+                        .toList()
+                : List.of();
     }
 
     @Override
@@ -42,11 +56,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
             return;
         }
 
-        // Note: In a production deployment behind a reverse proxy, API Gateway, or load balancer,
-        // client IP extraction must inspect 'X-Forwarded-For' or 'X-Real-IP' headers (with trusted
-        // proxy validation) rather than getRemoteAddr(). For this prototype scale, direct remote
-        // address is acceptable without overbuilding infrastructure.
-        String clientIp = request.getRemoteAddr();
+        String clientIp = resolveClientIp(request);
 
         RateLimitResult result = rateLimitingService.consume(clientIp, uri);
 
@@ -67,5 +77,32 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         );
 
         objectMapper.writeValue(response.getWriter(), errorResponse);
+    }
+
+    private String resolveClientIp(HttpServletRequest request) {
+        String remoteAddr = request.getRemoteAddr();
+        if (isTrustedProxy(remoteAddr)) {
+            String xForwardedFor = request.getHeader("X-Forwarded-For");
+            if (xForwardedFor != null && !xForwardedFor.isBlank()) {
+                String[] ips = xForwardedFor.split(",");
+                String firstIp = ips[0].trim();
+                if (!firstIp.isEmpty()) {
+                    return firstIp;
+                }
+            }
+        }
+        return remoteAddr;
+    }
+
+    private boolean isTrustedProxy(String remoteAddr) {
+        if (remoteAddr == null || trustedProxyMatchers.isEmpty()) {
+            return false;
+        }
+        for (IpAddressMatcher matcher : trustedProxyMatchers) {
+            if (matcher.matches(remoteAddr)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

@@ -34,6 +34,8 @@ jwt:
   service-private-key: ${SERVICE_JWT_PRIVATE_KEY:}
   expiration-seconds: 1800
   service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
+rate-limit:
+  trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
 internal-api:
   allowed-callers:
     user-validation:
