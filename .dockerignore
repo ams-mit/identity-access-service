@@ -1,5 +1,4 @@
 .git
-.mvn
 target/
 *.md
 .idea
