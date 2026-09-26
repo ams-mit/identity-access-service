@@ -45,13 +45,22 @@ public class InternalUserController {
     private final InternalUserService internalUserService;
     private final InternalCallerAuthorizationService internalCallerAuthorizationService;
 
+    /**
+     * Validates and retrieves user authorization details for an internal caller service.
+     * Rejects missing/invalid tokens and User JWTs with HTTP 401 Unauthorized (per Standard §25).
+     * Rejects valid service tokens whose calling service is not in the allow-list with HTTP 403 Forbidden.
+     *
+     * @param userId Unique user identifier to validate
+     * @return User authorization details (userId, accountStatus, roles)
+     */
     @GetMapping("/{userId}")
     @PreAuthorize("hasRole('SERVICE')")
     @Operation(
             summary = "Validate and retrieve user authorization details (Internal)",
             description = "Retrieves minimal authorization data (userId, accountStatus, roles) for a specific user ID. "
-                    + "Restricted exclusively to internal microservices presenting a valid RS256 Service JWT (containing a 'service' claim for an approved caller and granting the ROLE_SERVICE authority). "
-                    + "Regular user Bearer tokens (including SYSTEM_ADMINISTRATOR tokens) are strictly forbidden and rejected with HTTP 403.",
+                    + "Restricted exclusively to internal microservices presenting a valid RS256 Service JWT (granting the ROLE_SERVICE authority). "
+                    + "Authentication failures (missing, invalid, or expired tokens, or User JWTs presented instead of a Service JWT) return HTTP 401 Unauthorized. "
+                    + "HTTP 403 Forbidden is returned only when a valid service token is presented by a service not in the allow-list.",
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
@@ -62,12 +71,12 @@ public class InternalUserController {
             ),
             @ApiResponse(
                     responseCode = "401",
-                    description = "Unauthorized - missing, invalid, or expired Service Bearer token",
+                    description = "Unauthorized - missing, invalid, expired token, or User JWT supplied instead of Service JWT",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
                     responseCode = "403",
-                    description = "Forbidden - caller does not possess the SERVICE authority (user tokens strictly denied)",
+                    description = "Forbidden - valid service token presented, but calling service is not in the allow-list",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
             @ApiResponse(
