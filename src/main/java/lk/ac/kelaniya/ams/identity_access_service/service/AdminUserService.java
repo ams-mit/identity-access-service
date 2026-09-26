@@ -114,6 +114,33 @@ public class AdminUserService {
      * @param query         free-text match against name or email
      * @param status        account status filter
      * @param requestedRole advisory requested role filter
+     * @param role          assigned role filter
+     * @param pageable      Spring Data pagination and sorting information
+     * @return paginated list of user summary DTOs
+     */
+    @Transactional(readOnly = true)
+    public Page<AdminUserSummaryResponse> searchUsers(
+            String query,
+            AccountStatus status,
+            String requestedRole,
+            String role,
+            Pageable pageable
+    ) {
+        log.debug("Searching users: query='{}', status={}, requestedRole={}, role={}, pageable={}",
+                query, status, requestedRole, role, pageable);
+
+        Specification<User> spec = UserSpecifications.withFilters(query, status, requestedRole, role);
+        Page<User> usersPage = userRepository.findAll(spec, pageable);
+
+        return usersPage.map(this::toSummaryResponse);
+    }
+
+    /**
+     * Search and filter user summaries for administrative user management (backwards-compatible overload).
+     *
+     * @param query         optional search term matching name or email
+     * @param status        account status filter
+     * @param requestedRole advisory requested role filter
      * @param pageable      Spring Data pagination and sorting information
      * @return paginated list of user summary DTOs
      */
@@ -124,13 +151,7 @@ public class AdminUserService {
             String requestedRole,
             Pageable pageable
     ) {
-        log.debug("Searching users: query='{}', status={}, requestedRole={}, pageable={}",
-                query, status, requestedRole, pageable);
-
-        Specification<User> spec = UserSpecifications.withFilters(query, status, requestedRole);
-        Page<User> usersPage = userRepository.findAll(spec, pageable);
-
-        return usersPage.map(this::toSummaryResponse);
+        return searchUsers(query, status, requestedRole, null, pageable);
     }
 
     /**

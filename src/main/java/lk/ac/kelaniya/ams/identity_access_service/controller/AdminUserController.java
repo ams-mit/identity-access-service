@@ -164,11 +164,17 @@ public class AdminUserController {
             )
             @RequestParam(required = false) String requestedRole,
 
+            @Parameter(
+                    description = "Filter by assigned role (e.g. SYSTEM_ADMINISTRATOR, OWNER, TENANT_RESIDENT, FINANCE_OFFICER)",
+                    example = "SYSTEM_ADMINISTRATOR"
+            )
+            @RequestParam(required = false) String role,
+
             @ParameterObject
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable
     ) {
-        Page<AdminUserSummaryResponse> users = adminUserService.searchUsers(query, status, requestedRole, pageable);
+        Page<AdminUserSummaryResponse> users = adminUserService.searchUsers(query, status, requestedRole, role, pageable);
         PagedMeta meta = PagedMeta.builder()
                 .page(users.getNumber())
                 .size(users.getSize())

@@ -176,7 +176,7 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+        given(adminUserService.searchUsers(any(), any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .header("Authorization", "Bearer " + token))
@@ -208,7 +208,7 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq(null), eq(null), eq("TECHNICIAN"), eq(null), any(Pageable.class)))
                 .willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
@@ -218,7 +218,37 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].requestedRole", is("TECHNICIAN")));
 
-        verify(adminUserService).searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq(null), eq(null), eq("TECHNICIAN"), eq(null), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users filters by assigned role")
+    void testSearchUsers_filterByAssignedRole() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID u1 = UUID.randomUUID();
+        AdminUserSummaryResponse user1 = AdminUserSummaryResponse.builder()
+                .userId(u1)
+                .email("tech1@ams.lk")
+                .fullName("Sunil Silva")
+                .accountStatus(AccountStatus.ACTIVE)
+                .roles(List.of("TECHNICIAN"))
+                .build();
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
+        given(adminUserService.searchUsers(eq(null), eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class)))
+                .willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("role", "TECHNICIAN")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].roles[0]", is("TECHNICIAN")));
+
+        verify(adminUserService).searchUsers(eq(null), eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class));
     }
 
     @Test
@@ -229,7 +259,7 @@ class AdminUserControllerTest {
         mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
 
         Page<AdminUserSummaryResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
-        given(adminUserService.searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), eq(null), any(Pageable.class)))
                 .willReturn(emptyPage);
 
         mockMvc.perform(get("/api/v1/users")
@@ -239,7 +269,7 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.data", hasSize(0)))
                 .andExpect(jsonPath("$.meta.totalElements", is(0)));
 
-        verify(adminUserService).searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), eq(null), any(Pageable.class));
     }
 
     @Test
@@ -260,7 +290,7 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), eq(null), any(Pageable.class)))
                 .willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
@@ -272,7 +302,7 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].email", is("kamal@ams.lk")));
 
-        verify(adminUserService).searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), eq(null), any(Pageable.class));
     }
 
     @Test
@@ -288,7 +318,7 @@ class AdminUserControllerTest {
         );
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(secondPageUsers, PageRequest.of(1, 2), 6);
-        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+        given(adminUserService.searchUsers(any(), any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .param("page", "1")
@@ -301,7 +331,7 @@ class AdminUserControllerTest {
                 .andExpect(jsonPath("$.meta.size", is(2)));
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(adminUserService).searchUsers(any(), any(), any(), pageableCaptor.capture());
+        verify(adminUserService).searchUsers(any(), any(), any(), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(2);
     }

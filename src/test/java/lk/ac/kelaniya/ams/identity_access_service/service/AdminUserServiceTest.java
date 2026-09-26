@@ -142,6 +142,20 @@ class AdminUserServiceTest {
     }
 
     @Test
+    @DisplayName("searchUsers passes assigned role filter to UserSpecifications and repository")
+    void testSearchUsers_withAssignedRole() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<User> mockPage = new PageImpl<>(List.of(), pageable, 0);
+
+        given(userRepository.findAll(any(Specification.class), eq(pageable))).willReturn(mockPage);
+
+        Page<AdminUserSummaryResponse> result = adminUserService.searchUsers(null, null, null, "TECHNICIAN", pageable);
+
+        assertThat(result).isNotNull();
+        verify(userRepository).findAll(any(Specification.class), eq(pageable));
+    }
+
+    @Test
     @DisplayName("getUserById returns full AdminUserDetailResponse when user exists")
     void testGetUserById_existingUser_returnsDetailResponse() {
         UUID userId = UUID.randomUUID();
