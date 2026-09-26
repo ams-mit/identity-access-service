@@ -91,13 +91,14 @@ class AdminAuditControllerTest {
                         .header("Authorization", "Bearer " + token)
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].id", is(auditId.toString())))
-                .andExpect(jsonPath("$.content[0].eventType", is("ACCOUNT_STATUS_CHANGED")))
-                .andExpect(jsonPath("$.content[0].subjectUserId", is(subjectId.toString())))
-                .andExpect(jsonPath("$.content[0].actorUserId", is(adminId.toString())))
-                .andExpect(jsonPath("$.content[0].oldValue", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.content[0].newValue", is("ACTIVE")));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id", is(auditId.toString())))
+                .andExpect(jsonPath("$.data[0].eventType", is("ACCOUNT_STATUS_CHANGED")))
+                .andExpect(jsonPath("$.data[0].subjectUserId", is(subjectId.toString())))
+                .andExpect(jsonPath("$.data[0].actorUserId", is(adminId.toString())))
+                .andExpect(jsonPath("$.data[0].oldValue", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data[0].newValue", is("ACTIVE")))
+                .andExpect(jsonPath("$.meta.totalElements", is(1)));
     }
 
     @Test
@@ -156,10 +157,11 @@ class AdminAuditControllerTest {
                         .param("eventType", "ROLE_ASSIGNED")
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].id", is(auditId.toString())))
-                .andExpect(jsonPath("$.content[0].eventType", is("ROLE_ASSIGNED")))
-                .andExpect(jsonPath("$.content[0].newValue", is("FINANCE_OFFICER")));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id", is(auditId.toString())))
+                .andExpect(jsonPath("$.data[0].eventType", is("ROLE_ASSIGNED")))
+                .andExpect(jsonPath("$.data[0].newValue", is("FINANCE_OFFICER")))
+                .andExpect(jsonPath("$.meta.totalElements", is(1)));
 
         verify(auditService).searchAuditLogs(
                 eq(AuditEventType.ROLE_ASSIGNED),
@@ -197,9 +199,10 @@ class AdminAuditControllerTest {
                         .param("subjectUserId", targetSubjectId.toString())
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].id", is(auditId.toString())))
-                .andExpect(jsonPath("$.content[0].subjectUserId", is(targetSubjectId.toString())));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].id", is(auditId.toString())))
+                .andExpect(jsonPath("$.data[0].subjectUserId", is(targetSubjectId.toString())))
+                .andExpect(jsonPath("$.meta.totalElements", is(1)));
 
         verify(auditService).searchAuditLogs(
                 isNull(),

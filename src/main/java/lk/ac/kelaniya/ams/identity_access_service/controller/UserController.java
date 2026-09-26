@@ -3,12 +3,12 @@ package lk.ac.kelaniya.ams.identity_access_service.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.ChangePasswordRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.UserSummaryResponse;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
@@ -17,7 +17,6 @@ import lk.ac.kelaniya.ams.identity_access_service.security.UserPrincipal;
 import lk.ac.kelaniya.ams.identity_access_service.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -43,33 +42,33 @@ public class UserController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "User profile retrieved successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = UserSummaryResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - user account is deactivated",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "Not found - user account does not exist",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<UserSummaryResponse> getCurrentUser(@AuthenticationPrincipal Object principal) {
+    public ResponseEntity<ApiResponse<UserSummaryResponse>> getCurrentUser(@AuthenticationPrincipal Object principal) {
         if (principal instanceof ServicePrincipal) {
             throw new InvalidCredentialsException("Authentication required");
         }
@@ -77,7 +76,7 @@ public class UserController {
             throw new InvalidCredentialsException("Authentication required");
         }
         UserSummaryResponse response = userService.getCurrentUser(userPrincipal.getUserId());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 
     @PutMapping("/me/password")
@@ -87,31 +86,31 @@ public class UserController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "204",
                     description = "Password changed successfully"
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - validation failure, password mismatch, or new password same as current password",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - unauthenticated, invalid token, or current password incorrect",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - user account is deactivated",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "Not found - user account does not exist",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))

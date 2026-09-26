@@ -4,12 +4,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateUserEmailRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.InternalUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.UpdateUserEmailResponse;
@@ -69,33 +69,33 @@ public class InternalUserController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "User authorization details retrieved successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = InternalUserResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, expired token, or User JWT supplied instead of Service JWT",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - valid service token presented, but calling service is not in the allow-list",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "Not found - requested user ID does not exist",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<InternalUserResponse> getUserForValidation(
+    public ResponseEntity<ApiResponse<InternalUserResponse>> getUserForValidation(
             @Parameter(description = "Unique user identifier to validate", required = true, example = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d")
             @PathVariable UUID userId
     ) {
@@ -113,7 +113,7 @@ public class InternalUserController {
         }
 
         InternalUserResponse response = internalUserService.getUserForValidation(userId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 
     /**
@@ -135,38 +135,38 @@ public class InternalUserController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "User email successfully updated",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = UpdateUserEmailResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Invalid email format or validation error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, expired token, or User JWT supplied instead of Service JWT",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - valid service token presented, but calling service is not authorized for email updates",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "Not found - requested user ID does not exist",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "Conflict - email already registered to another user",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<UpdateUserEmailResponse> updateUserEmail(
+    public ResponseEntity<ApiResponse<UpdateUserEmailResponse>> updateUserEmail(
             @Parameter(description = "Unique user identifier whose email is being updated", required = true, example = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d")
             @PathVariable UUID userId,
             @Valid @RequestBody UpdateUserEmailRequest request
@@ -185,6 +185,6 @@ public class InternalUserController {
         }
 
         UpdateUserEmailResponse response = internalUserService.updateUserEmail(userId, request.getNewEmail(), callerServiceName);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 }

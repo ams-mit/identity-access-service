@@ -67,11 +67,11 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
                 .reason(null)
                 .build();
         HttpEntity<UpdateAccountStatusRequest> statusEntity = createAuthEntity(statusRequest, adminToken);
-        ResponseEntity<AdminUserDetailResponse> statusResponse = restTemplate.exchange(
+        ResponseEntity<String> statusResponse = restTemplate.exchange(
                 "/api/v1/users/" + targetUserId + "/status",
                 HttpMethod.PATCH,
                 statusEntity,
-                AdminUserDetailResponse.class
+                String.class
         );
         assertThat(statusResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -80,11 +80,11 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
                 .role("FINANCE_OFFICER")
                 .build();
         HttpEntity<AssignRoleRequest> roleEntity = createAuthEntity(roleRequest, adminToken);
-        ResponseEntity<AdminUserDetailResponse> roleResponse = restTemplate.exchange(
+        ResponseEntity<String> roleResponse = restTemplate.exchange(
                 "/api/v1/users/" + targetUserId + "/roles",
                 HttpMethod.POST,
                 roleEntity,
-                AdminUserDetailResponse.class
+                String.class
         );
         assertThat(roleResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -120,7 +120,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode root = objectMapper.readTree(queryResponse.getBody());
-        JsonNode content = root.get("content");
+        JsonNode content = root.get("data");
         assertThat(content).isNotNull();
         assertThat(content.isArray()).isTrue();
         assertThat(content.size()).isGreaterThanOrEqualTo(2);
@@ -145,11 +145,11 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
                 .role("MAINTENANCE_COORDINATOR")
                 .build();
         HttpEntity<AssignRoleRequest> roleEntity = createAuthEntity(roleRequest, adminToken);
-        ResponseEntity<AdminUserDetailResponse> roleResponse = restTemplate.exchange(
+        ResponseEntity<String> roleResponse = restTemplate.exchange(
                 "/api/v1/users/" + targetUserId + "/roles",
                 HttpMethod.POST,
                 roleEntity,
-                AdminUserDetailResponse.class
+                String.class
         );
         assertThat(roleResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -164,7 +164,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode root = objectMapper.readTree(queryResponse.getBody());
-        JsonNode content = root.get("content");
+        JsonNode content = root.get("data");
         assertThat(content.isArray()).isTrue();
         assertThat(content.size()).isEqualTo(1);
 
@@ -218,7 +218,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode root = objectMapper.readTree(queryResponse.getBody());
-        JsonNode content = root.get("content");
+        JsonNode content = root.get("data");
         assertThat(content.isArray()).isTrue();
         assertThat(content.size()).isGreaterThanOrEqualTo(1);
 
@@ -246,7 +246,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
                 "/api/v1/users/" + userA.getId() + "/status",
                 HttpMethod.PATCH,
                 createAuthEntity(UpdateAccountStatusRequest.builder().status(AccountStatus.ACTIVE).build(), adminToken),
-                AdminUserDetailResponse.class
+                String.class
         );
 
         // Update status for User B
@@ -254,7 +254,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
                 "/api/v1/users/" + userB.getId() + "/status",
                 HttpMethod.PATCH,
                 createAuthEntity(UpdateAccountStatusRequest.builder().status(AccountStatus.ACTIVE).build(), adminToken),
-                AdminUserDetailResponse.class
+                String.class
         );
 
         // Query filtering strictly by subjectUserId = userA.getId()
@@ -268,7 +268,7 @@ class AuditTrailIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(queryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         JsonNode root = objectMapper.readTree(queryResponse.getBody());
-        JsonNode content = root.get("content");
+        JsonNode content = root.get("data");
         assertThat(content.isArray()).isTrue();
         assertThat(content.size()).isGreaterThanOrEqualTo(1);
 

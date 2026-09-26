@@ -65,18 +65,20 @@ class ServiceJwtAndInternalUserValidationIntegrationTest extends AbstractIntegra
         assertThat(rawResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(rawResponse.getBody()).isNotBlank();
 
-        InternalUserResponse response = objectMapper.readValue(rawResponse.getBody(), InternalUserResponse.class);
+        JsonNode jsonNode = objectMapper.readTree(rawResponse.getBody());
+        assertThat(jsonNode.has("data")).isTrue();
+        InternalUserResponse response = objectMapper.treeToValue(jsonNode.get("data"), InternalUserResponse.class);
         assertThat(response.getUserId()).isEqualTo(user.getId());
         assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(response.getRoles()).containsExactly("TENANT_RESIDENT");
 
         // Explicitly assert zero PII leakage in the serialized JSON
-        JsonNode jsonNode = objectMapper.readTree(rawResponse.getBody());
-        assertThat(jsonNode.has("email")).isFalse();
-        assertThat(jsonNode.has("passwordHash")).isFalse();
-        assertThat(jsonNode.has("firstName")).isFalse();
-        assertThat(jsonNode.has("lastName")).isFalse();
-        assertThat(jsonNode.has("phone")).isFalse();
+        JsonNode dataNode = jsonNode.get("data");
+        assertThat(dataNode.has("email")).isFalse();
+        assertThat(dataNode.has("passwordHash")).isFalse();
+        assertThat(dataNode.has("firstName")).isFalse();
+        assertThat(dataNode.has("lastName")).isFalse();
+        assertThat(dataNode.has("phone")).isFalse();
     }
 
     @Test

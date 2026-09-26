@@ -31,4 +31,8 @@ public class AdminCreateUserResponse {
 
     @Schema(description = "Indicates whether the user must change their temporary password upon initial login", example = "true")
     private boolean mustChangePassword;
+
+    @Schema(description = "Assigned user roles", example = "[\"FINANCE_OFFICER\"]")
+    @Builder.Default
+    private java.util.List<String> roles = new java.util.ArrayList<>();
 }

@@ -1,9 +1,12 @@
 package lk.ac.kelaniya.ams.identity_access_service.repository.specification;
 
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.entity.UserRole;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.ArrayList;
@@ -27,6 +30,20 @@ public final class UserSpecifications {
      * @return JPA Specification combining all non-null search criteria
      */
     public static Specification<User> withFilters(String query, AccountStatus status, String requestedRole) {
+        return withFilters(query, status, requestedRole, null);
+    }
+
+    /**
+     * Constructs a composite specification for filtering users by search query, account status,
+     * advisory requested role, and assigned role.
+     *
+     * @param query         free-text search term matching first name, last name, full name, or email
+     * @param status        account lifecycle status filter
+     * @param requestedRole advisory requested role filter
+     * @param role          assigned role filter (matched case-insensitively against user_roles -> role -> name)
+     * @return JPA Specification combining all non-null search criteria
+     */
+    public static Specification<User> withFilters(String query, AccountStatus status, String requestedRole, String role) {
         return (root, criteriaQuery, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -51,6 +68,15 @@ public final class UserSpecifications {
 
             if (requestedRole != null && !requestedRole.trim().isEmpty()) {
                 predicates.add(cb.equal(cb.upper(root.get("requestedRole")), requestedRole.trim().toUpperCase()));
+            }
+
+            if (role != null && !role.trim().isEmpty()) {
+                Join<User, UserRole> userRolesJoin = root.join("userRoles");
+                Join<UserRole, Role> roleJoin = userRolesJoin.join("role");
+                predicates.add(cb.equal(cb.upper(roleJoin.get("name")), role.trim().toUpperCase()));
+                if (criteriaQuery != null) {
+                    criteriaQuery.distinct(true);
+                }
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

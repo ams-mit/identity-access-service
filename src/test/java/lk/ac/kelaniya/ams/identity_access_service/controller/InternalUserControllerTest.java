@@ -94,13 +94,13 @@ class InternalUserControllerTest {
                         .header("Authorization", "Bearer " + serviceToken)
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
-                .andExpect(jsonPath("$.roles", containsInAnyOrder("TENANT_RESIDENT")))
-                .andExpect(jsonPath("$.email").doesNotExist())
-                .andExpect(jsonPath("$.passwordHash").doesNotExist())
-                .andExpect(jsonPath("$.firstName").doesNotExist())
-                .andExpect(jsonPath("$.lastName").doesNotExist());
+                .andExpect(jsonPath("$.data.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.data.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.data.roles", containsInAnyOrder("TENANT_RESIDENT")))
+                .andExpect(jsonPath("$.data.email").doesNotExist())
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist())
+                .andExpect(jsonPath("$.data.firstName").doesNotExist())
+                .andExpect(jsonPath("$.data.lastName").doesNotExist());
     }
 
     @Test
@@ -241,10 +241,10 @@ class InternalUserControllerTest {
                         .content(objectMapper.writeValueAsString(request))
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.email", is(newEmail)))
-                .andExpect(jsonPath("$.password").doesNotExist())
-                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+                .andExpect(jsonPath("$.data.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.data.email", is(newEmail)))
+                .andExpect(jsonPath("$.data.password").doesNotExist())
+                .andExpect(jsonPath("$.data.passwordHash").doesNotExist());
     }
 
     @Test

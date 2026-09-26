@@ -70,6 +70,19 @@ public class UserService {
                     .toList()
                 : List.of();
 
+        List<String> permissions = (user.getUserRoles() != null && !user.getUserRoles().isEmpty())
+                ? user.getUserRoles().stream()
+                    .map(lk.ac.kelaniya.ams.identity_access_service.entity.UserRole::getRole)
+                    .filter(Objects::nonNull)
+                    .filter(r -> r.getPermissions() != null)
+                    .flatMap(r -> r.getPermissions().stream())
+                    .map(lk.ac.kelaniya.ams.identity_access_service.entity.Permission::getCode)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted()
+                    .toList()
+                : List.of();
+
         return UserSummaryResponse.builder()
                 .userId(user.getId())
                 .email(user.getEmail())
@@ -77,6 +90,7 @@ public class UserService {
                 .lastName(user.getLastName())
                 .accountStatus(user.getAccountStatus())
                 .roles(roles)
+                .permissions(permissions)
                 .requestedRole(user.getRequestedRole())
                 .build();
     }

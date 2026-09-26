@@ -40,6 +40,10 @@ public class UserSummaryResponse {
     @Builder.Default
     private List<String> roles = new ArrayList<>();
 
+    @Schema(description = "Aggregated permissions granted by user roles", example = "[\"VIEW_ANNOUNCEMENT\", \"MANAGE_MAINTENANCE\"]")
+    @Builder.Default
+    private List<String> permissions = new ArrayList<>();
+
     @Schema(description = "Advisory role requested during registration for administrative review", example = "OWNER")
     private String requestedRole;
 }

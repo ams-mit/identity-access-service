@@ -176,18 +176,18 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+        given(adminUserService.searchUsers(any(), any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].userId", is(u1.toString())))
-                .andExpect(jsonPath("$.content[0].email", is("owner1@ams.lk")))
-                .andExpect(jsonPath("$.content[0].fullName", is("Kamal Perera")))
-                .andExpect(jsonPath("$.content[0].accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.content[0].requestedRole", is("OWNER")))
-                .andExpect(jsonPath("$.totalElements", is(1)));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].userId", is(u1.toString())))
+                .andExpect(jsonPath("$.data[0].email", is("owner1@ams.lk")))
+                .andExpect(jsonPath("$.data[0].fullName", is("Kamal Perera")))
+                .andExpect(jsonPath("$.data[0].accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data[0].requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.meta.totalElements", is(1)));
     }
 
     @Test
@@ -208,17 +208,47 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq(null), eq(null), eq("TECHNICIAN"), eq(null), any(Pageable.class)))
                 .willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .param("requestedRole", "TECHNICIAN")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].requestedRole", is("TECHNICIAN")));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].requestedRole", is("TECHNICIAN")));
 
-        verify(adminUserService).searchUsers(eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq(null), eq(null), eq("TECHNICIAN"), eq(null), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users filters by assigned role")
+    void testSearchUsers_filterByAssignedRole() throws Exception {
+        String token = "valid.sysadmin.token";
+        UUID adminId = UUID.randomUUID();
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UUID u1 = UUID.randomUUID();
+        AdminUserSummaryResponse user1 = AdminUserSummaryResponse.builder()
+                .userId(u1)
+                .email("tech1@ams.lk")
+                .fullName("Sunil Silva")
+                .accountStatus(AccountStatus.ACTIVE)
+                .roles(List.of("TECHNICIAN"))
+                .build();
+
+        Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
+        given(adminUserService.searchUsers(eq(null), eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class)))
+                .willReturn(mockPage);
+
+        mockMvc.perform(get("/api/v1/users")
+                        .param("role", "TECHNICIAN")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].roles[0]", is("TECHNICIAN")));
+
+        verify(adminUserService).searchUsers(eq(null), eq(null), eq(null), eq("TECHNICIAN"), any(Pageable.class));
     }
 
     @Test
@@ -229,17 +259,17 @@ class AdminUserControllerTest {
         mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
 
         Page<AdminUserSummaryResponse> emptyPage = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
-        given(adminUserService.searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), eq(null), any(Pageable.class)))
                 .willReturn(emptyPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .param("status", "SUSPENDED")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(0)))
-                .andExpect(jsonPath("$.totalElements", is(0)));
+                .andExpect(jsonPath("$.data", hasSize(0)))
+                .andExpect(jsonPath("$.meta.totalElements", is(0)));
 
-        verify(adminUserService).searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq(null), eq(AccountStatus.SUSPENDED), eq(null), eq(null), any(Pageable.class));
     }
 
     @Test
@@ -260,7 +290,7 @@ class AdminUserControllerTest {
                 .build();
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(List.of(user1), PageRequest.of(0, 20), 1);
-        given(adminUserService.searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class)))
+        given(adminUserService.searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), eq(null), any(Pageable.class)))
                 .willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
@@ -269,10 +299,10 @@ class AdminUserControllerTest {
                         .param("requestedRole", "OWNER")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(1)))
-                .andExpect(jsonPath("$.content[0].email", is("kamal@ams.lk")));
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath("$.data[0].email", is("kamal@ams.lk")));
 
-        verify(adminUserService).searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), any(Pageable.class));
+        verify(adminUserService).searchUsers(eq("kamal"), eq(AccountStatus.PENDING_VERIFICATION), eq("OWNER"), eq(null), any(Pageable.class));
     }
 
     @Test
@@ -288,21 +318,20 @@ class AdminUserControllerTest {
         );
 
         Page<AdminUserSummaryResponse> mockPage = new PageImpl<>(secondPageUsers, PageRequest.of(1, 2), 6);
-        given(adminUserService.searchUsers(any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
+        given(adminUserService.searchUsers(any(), any(), any(), any(), any(Pageable.class))).willReturn(mockPage);
 
         mockMvc.perform(get("/api/v1/users")
                         .param("page", "1")
                         .param("size", "2")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content", hasSize(2)))
-                .andExpect(jsonPath("$.totalElements", is(6)))
-                .andExpect(jsonPath("$.totalPages", is(3)))
-                .andExpect(jsonPath("$.number", is(1)))
-                .andExpect(jsonPath("$.size", is(2)));
+                .andExpect(jsonPath("$.data", hasSize(2)))
+                .andExpect(jsonPath("$.meta.totalElements", is(6)))
+                .andExpect(jsonPath("$.meta.page", is(1)))
+                .andExpect(jsonPath("$.meta.size", is(2)));
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(adminUserService).searchUsers(any(), any(), any(), pageableCaptor.capture());
+        verify(adminUserService).searchUsers(any(), any(), any(), any(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageNumber()).isEqualTo(1);
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(2);
     }
@@ -362,21 +391,21 @@ class AdminUserControllerTest {
         mockMvc.perform(get("/api/v1/users/{userId}", targetId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(targetId.toString())))
-                .andExpect(jsonPath("$.username", is("applicant_john")))
-                .andExpect(jsonPath("$.email", is("applicant.john@example.com")))
-                .andExpect(jsonPath("$.fullName", is("John Applicant")))
-                .andExpect(jsonPath("$.firstName", is("John")))
-                .andExpect(jsonPath("$.lastName", is("Applicant")))
-                .andExpect(jsonPath("$.phone", is("+94712345678")))
-                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.requestedRole", is("OWNER")))
-                .andExpect(jsonPath("$.roles", hasSize(0)))
-                .andExpect(jsonPath("$.grantedRoles", hasSize(0)))
-                .andExpect(jsonPath("$.failedAttemptCount", is(0)))
-                .andExpect(jsonPath("$.accountLocked", is(false)))
-                .andExpect(jsonPath("$.createdAt", is("2026-09-13T08:00:00Z")))
-                .andExpect(jsonPath("$.updatedAt", is("2026-09-13T08:00:00Z")));
+                .andExpect(jsonPath("$.data.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.data.username", is("applicant_john")))
+                .andExpect(jsonPath("$.data.email", is("applicant.john@example.com")))
+                .andExpect(jsonPath("$.data.fullName", is("John Applicant")))
+                .andExpect(jsonPath("$.data.firstName", is("John")))
+                .andExpect(jsonPath("$.data.lastName", is("Applicant")))
+                .andExpect(jsonPath("$.data.phone", is("+94712345678")))
+                .andExpect(jsonPath("$.data.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data.requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.data.roles", hasSize(0)))
+                .andExpect(jsonPath("$.data.grantedRoles", hasSize(0)))
+                .andExpect(jsonPath("$.data.failedAttemptCount", is(0)))
+                .andExpect(jsonPath("$.data.accountLocked", is(false)))
+                .andExpect(jsonPath("$.data.createdAt", is("2026-09-13T08:00:00Z")))
+                .andExpect(jsonPath("$.data.updatedAt", is("2026-09-13T08:00:00Z")));
     }
 
     @Test
@@ -523,9 +552,9 @@ class AdminUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(targetId.toString())))
-                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
-                .andExpect(jsonPath("$.requestedRole", is("OWNER")));
+                .andExpect(jsonPath("$.data.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.data.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.data.requestedRole", is("OWNER")));
     }
 
     @Test
@@ -554,9 +583,9 @@ class AdminUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(targetId.toString())))
-                .andExpect(jsonPath("$.accountStatus", is("REJECTED")))
-                .andExpect(jsonPath("$.requestedRole", is("TENANT_RESIDENT")));
+                .andExpect(jsonPath("$.data.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.data.accountStatus", is("REJECTED")))
+                .andExpect(jsonPath("$.data.requestedRole", is("TENANT_RESIDENT")));
     }
 
     // =========================================================================
@@ -634,8 +663,8 @@ class AdminUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(targetId.toString())))
-                .andExpect(jsonPath("$.roles[0]", is("FINANCE_OFFICER")));
+                .andExpect(jsonPath("$.data.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.data.roles[0]", is("FINANCE_OFFICER")));
     }
 
     @Test
@@ -773,8 +802,8 @@ class AdminUserControllerTest {
         mockMvc.perform(delete("/api/v1/users/{userId}/roles/{roleName}", targetId, "FINANCE_OFFICER")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(targetId.toString())))
-                .andExpect(jsonPath("$.roles", hasSize(0)));
+                .andExpect(jsonPath("$.data.userId", is(targetId.toString())))
+                .andExpect(jsonPath("$.data.roles", hasSize(0)));
     }
 
     @Test
@@ -859,11 +888,73 @@ class AdminUserControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId", is(newUserId.toString())))
-                .andExpect(jsonPath("$.email", is("jane.doe@ams.lk")))
-                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
-                .andExpect(jsonPath("$.mustChangePassword", is(true)))
+                .andExpect(jsonPath("$.data.userId", is(newUserId.toString())))
+                .andExpect(jsonPath("$.data.email", is("jane.doe@ams.lk")))
+                .andExpect(jsonPath("$.data.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.data.mustChangePassword", is(true)))
                 .andExpect(content().string(not(containsString("TempSecret123"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users with initialRoles returns 201 with assigned roles")
+    void testCreateUser_withInitialRoles_returns201WithRoles() throws Exception {
+        UUID newUserId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminCreateUserResponse response = AdminCreateUserResponse.builder()
+                .userId(newUserId)
+                .email("jane.staff@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .roles(List.of("FINANCE_OFFICER"))
+                .build();
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any())).willReturn(response);
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.staff@ams.lk\","
+                + "\"phone\":\"+94771234567\","
+                + "\"temporaryPassword\":\"TempSecret123\","
+                + "\"initialRoles\":[\"FINANCE_OFFICER\"]"
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.userId", is(newUserId.toString())))
+                .andExpect(jsonPath("$.data.roles[0]", is("FINANCE_OFFICER")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 400 Bad Request when initialRoles contains invalid role")
+    void testCreateUser_invalidInitialRole_returns400() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any()))
+                .willThrow(new InvalidRoleException("Invalid role: 'INVALID_ROLE'. Valid roles are: ..."));
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.invalid@ams.lk\","
+                + "\"temporaryPassword\":\"TempSecret123\","
+                + "\"initialRoles\":[\"INVALID_ROLE\"]"
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_ROLE")));
     }
 
     @Test

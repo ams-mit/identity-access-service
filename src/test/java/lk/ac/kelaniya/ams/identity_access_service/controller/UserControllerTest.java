@@ -113,6 +113,7 @@ class UserControllerTest {
                 .lastName("Smith")
                 .accountStatus(AccountStatus.ACTIVE)
                 .roles(List.of("ROLE_MANAGER"))
+                .permissions(List.of("VIEW_MAINTENANCE_REQUEST"))
                 .requestedRole("APARTMENT_MANAGER")
                 .build();
 
@@ -121,13 +122,14 @@ class UserControllerTest {
         mockMvc.perform(get("/api/v1/users/me")
                         .header("Authorization", "Bearer " + validToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.email", is("fresh.updated@example.com")))
-                .andExpect(jsonPath("$.firstName", is("Alice")))
-                .andExpect(jsonPath("$.lastName", is("Smith")))
-                .andExpect(jsonPath("$.accountStatus", is("ACTIVE")))
-                .andExpect(jsonPath("$.roles[0]", is("ROLE_MANAGER")))
-                .andExpect(jsonPath("$.requestedRole", is("APARTMENT_MANAGER")));
+                .andExpect(jsonPath("$.data.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.data.email", is("fresh.updated@example.com")))
+                .andExpect(jsonPath("$.data.firstName", is("Alice")))
+                .andExpect(jsonPath("$.data.lastName", is("Smith")))
+                .andExpect(jsonPath("$.data.accountStatus", is("ACTIVE")))
+                .andExpect(jsonPath("$.data.roles[0]", is("ROLE_MANAGER")))
+                .andExpect(jsonPath("$.data.permissions[0]", is("VIEW_MAINTENANCE_REQUEST")))
+                .andExpect(jsonPath("$.data.requestedRole", is("APARTMENT_MANAGER")));
     }
 
     @Test

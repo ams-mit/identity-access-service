@@ -3,9 +3,9 @@ package lk.ac.kelaniya.ams.identity_access_service.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.JwksResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.PublicKeyResponse;
@@ -43,18 +43,18 @@ public class PublicKeyController {
             description = "Exposes the RSA public key in X.509 PEM format for RS256 token verification by API Gateway and resource servers."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "RSA public key in X.509 PEM format",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = PublicKeyResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<PublicKeyResponse> getPublicKey() {
+    public ResponseEntity<ApiResponse<PublicKeyResponse>> getPublicKey() {
         PublicKeyResponse response = PublicKeyResponse.builder()
                 .algorithm("RS256")
                 .format("X.509")
@@ -62,7 +62,7 @@ public class PublicKeyController {
                 .publicKey(rsaKeyProvider.getPublicKeyPem())
                 .build();
 
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 
     /**
@@ -74,12 +74,12 @@ public class PublicKeyController {
             description = "Exposes the RSA public verification key in RFC 7517 compliant JWKS format."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "RFC 7517 compliant JWKS payload",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = JwksResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))

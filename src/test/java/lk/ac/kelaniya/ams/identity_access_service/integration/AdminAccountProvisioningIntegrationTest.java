@@ -6,6 +6,7 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.request.ChangePasswordRequ
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
@@ -17,6 +18,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 
 import java.util.List;
 import java.util.Optional;
@@ -55,15 +57,16 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
                 .build();
 
         HttpEntity<AdminCreateUserRequest> createEntity = createAuthEntity(createRequest, adminToken);
-        ResponseEntity<AdminCreateUserResponse> createResponse = restTemplate.exchange(
+        ResponseEntity<ApiResponse<AdminCreateUserResponse>> createResponse = restTemplate.exchange(
                 "/api/v1/users",
                 HttpMethod.POST,
                 createEntity,
-                AdminCreateUserResponse.class
+                new ParameterizedTypeReference<ApiResponse<AdminCreateUserResponse>>() {}
         );
 
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        AdminCreateUserResponse createdUserDto = createResponse.getBody();
+        assertThat(createResponse.getBody()).isNotNull();
+        AdminCreateUserResponse createdUserDto = createResponse.getBody().getData();
         assertThat(createdUserDto).isNotNull();
         UUID newUserId = createdUserDto.getUserId();
         assertThat(newUserId).isNotNull();
@@ -86,16 +89,17 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
                 .build();
 
         HttpEntity<AssignRoleRequest> assignRoleEntity = createAuthEntity(roleRequest, adminToken);
-        ResponseEntity<AdminUserDetailResponse> assignRoleResponse = restTemplate.exchange(
+        ResponseEntity<ApiResponse<AdminUserDetailResponse>> assignRoleResponse = restTemplate.exchange(
                 "/api/v1/users/" + newUserId + "/roles",
                 HttpMethod.POST,
                 assignRoleEntity,
-                AdminUserDetailResponse.class
+                new ParameterizedTypeReference<ApiResponse<AdminUserDetailResponse>>() {}
         );
 
         assertThat(assignRoleResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(assignRoleResponse.getBody()).isNotNull();
-        assertThat(assignRoleResponse.getBody().getRoles()).contains("FINANCE_OFFICER");
+        assertThat(assignRoleResponse.getBody().getData()).isNotNull();
+        assertThat(assignRoleResponse.getBody().getData().getRoles()).contains("FINANCE_OFFICER");
 
         // Verify real database state after role assignment
         Optional<User> userAfterRoleOpt = userRepository.findById(newUserId);
@@ -113,14 +117,16 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
                 .password(tempPassword)
                 .build();
 
-        ResponseEntity<LoginResponse> initialLoginResponse = restTemplate.postForEntity(
+        ResponseEntity<ApiResponse<LoginResponse>> initialLoginResponse = restTemplate.exchange(
                 "/api/v1/auth/login",
-                initialLoginRequest,
-                LoginResponse.class
+                HttpMethod.POST,
+                new HttpEntity<>(initialLoginRequest),
+                new ParameterizedTypeReference<ApiResponse<LoginResponse>>() {}
         );
 
         assertThat(initialLoginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        LoginResponse initialLoginBody = initialLoginResponse.getBody();
+        assertThat(initialLoginResponse.getBody()).isNotNull();
+        LoginResponse initialLoginBody = initialLoginResponse.getBody().getData();
         assertThat(initialLoginBody).isNotNull();
         // Confirm mustChangePassword=true in the real response
         assertThat(initialLoginBody.isMustChangePassword()).isTrue();
@@ -176,15 +182,17 @@ class AdminAccountProvisioningIntegrationTest extends AbstractIntegrationTest {
                 .password(newPermanentPassword)
                 .build();
 
-        ResponseEntity<LoginResponse> newLoginResponse = restTemplate.postForEntity(
+        ResponseEntity<ApiResponse<LoginResponse>> newLoginResponse = restTemplate.exchange(
                 "/api/v1/auth/login",
-                newPasswordLoginRequest,
-                LoginResponse.class
+                HttpMethod.POST,
+                new HttpEntity<>(newPasswordLoginRequest),
+                new ParameterizedTypeReference<ApiResponse<LoginResponse>>() {}
         );
 
         assertThat(newLoginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(newLoginResponse.getBody()).isNotNull();
-        assertThat(newLoginResponse.getBody().isMustChangePassword()).isFalse();
-        assertThat(newLoginResponse.getBody().getAccessToken()).isNotBlank();
+        assertThat(newLoginResponse.getBody().getData()).isNotNull();
+        assertThat(newLoginResponse.getBody().getData().isMustChangePassword()).isFalse();
+        assertThat(newLoginResponse.getBody().getData().getAccessToken()).isNotBlank();
     }
 }
