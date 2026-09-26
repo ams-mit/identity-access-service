@@ -93,10 +93,10 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId", is(generatedId.toString())))
-                .andExpect(jsonPath("$.email", is("jane.doe@example.com")))
-                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.data.userId", is(generatedId.toString())))
+                .andExpect(jsonPath("$.data.email", is("jane.doe@example.com")))
+                .andExpect(jsonPath("$.data.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data.requestedRole", is("OWNER")))
                 .andExpect(content().string(not(containsString("SecurePass1"))));
     }
 
@@ -131,10 +131,10 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId", is(generatedId.toString())))
-                .andExpect(jsonPath("$.email", is(request.getEmail())))
-                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.requestedRole", is(role)));
+                .andExpect(jsonPath("$.data.userId", is(generatedId.toString())))
+                .andExpect(jsonPath("$.data.email", is(request.getEmail())))
+                .andExpect(jsonPath("$.data.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data.requestedRole", is(role)));
     }
 
     @ParameterizedTest
@@ -338,11 +338,11 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken", is("mocked.rs256.jwt.token")))
-                .andExpect(jsonPath("$.expiresIn", is(1800)))
-                .andExpect(jsonPath("$.user.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.user.email", is("john.doe@example.com")))
-                .andExpect(jsonPath("$.user.roles[0]", is("RESIDENT")))
+                .andExpect(jsonPath("$.data.accessToken", is("mocked.rs256.jwt.token")))
+                .andExpect(jsonPath("$.data.expiresIn", is(1800)))
+                .andExpect(jsonPath("$.data.user.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.data.user.email", is("john.doe@example.com")))
+                .andExpect(jsonPath("$.data.user.roles[0]", is("RESIDENT")))
                 .andExpect(content().string(not(containsString("SecretPass123"))));
     }
 
@@ -580,7 +580,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message", is("If an account is associated with this email, instructions will be provided.")));
+                .andExpect(jsonPath("$.data.message", is("If an account is associated with this email, instructions will be provided.")));
     }
 
     @Test
@@ -600,7 +600,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message", is("If an account is associated with this email, instructions will be provided.")));
+                .andExpect(jsonPath("$.data.message", is("If an account is associated with this email, instructions will be provided.")));
     }
 
     @Test
@@ -652,7 +652,7 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message", is("Password has been reset successfully.")))
+                .andExpect(jsonPath("$.data.message", is("Password has been reset successfully.")))
                 .andExpect(content().string(not(containsString("NewSecurePass999"))));
     }
 

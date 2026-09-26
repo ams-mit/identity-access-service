@@ -1,6 +1,7 @@
 package lk.ac.kelaniya.ams.identity_access_service.integration;
 
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
@@ -18,8 +19,10 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -187,17 +190,19 @@ public abstract class AbstractIntegrationTest {
                 .password(password)
                 .build();
 
-        ResponseEntity<LoginResponse> response = restTemplate.postForEntity(
+        ResponseEntity<ApiResponse<LoginResponse>> response = restTemplate.exchange(
                 "/api/v1/auth/login",
-                loginRequest,
-                LoginResponse.class
+                HttpMethod.POST,
+                new HttpEntity<>(loginRequest),
+                new ParameterizedTypeReference<ApiResponse<LoginResponse>>() {}
         );
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getAccessToken()).isNotBlank();
+        assertThat(response.getBody().getData()).isNotNull();
+        assertThat(response.getBody().getData().getAccessToken()).isNotBlank();
 
-        return response.getBody().getAccessToken();
+        return response.getBody().getData().getAccessToken();
     }
 
     /**

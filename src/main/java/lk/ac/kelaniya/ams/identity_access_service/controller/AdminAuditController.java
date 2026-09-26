@@ -4,12 +4,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AuditEventResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.PagedMeta;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import lk.ac.kelaniya.ams.identity_access_service.service.AuditService;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -51,32 +53,33 @@ public class AdminAuditController {
             security = @SecurityRequirement(name = "bearerAuth")
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "Audit events retrieved successfully"
+                    description = "Audit events retrieved successfully",
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - invalid filter parameter or pagination arguments",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<Page<AuditEventResponse>> getAuditLogs(
+    public ResponseEntity<ApiResponse<List<AuditEventResponse>>> getAuditLogs(
             @Parameter(description = "Filter by categorized audit event type", example = "ACCOUNT_STATUS_CHANGED")
             @RequestParam(required = false) AuditEventType eventType,
 
@@ -99,6 +102,11 @@ public class AdminAuditController {
         Page<AuditEventResponse> logs = auditService.searchAuditLogs(
                 eventType, subjectUserId, actorUserId, from, to, pageable
         );
-        return ResponseEntity.ok(logs);
+        PagedMeta meta = PagedMeta.builder()
+                .page(logs.getNumber())
+                .size(logs.getSize())
+                .totalElements(logs.getTotalElements())
+                .build();
+        return ResponseEntity.ok(ApiResponse.of(logs.getContent(), meta));
     }
 }

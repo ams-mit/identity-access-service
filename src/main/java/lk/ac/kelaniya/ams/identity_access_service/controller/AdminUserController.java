@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,7 +14,9 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateAccountStatu
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminCreateUserResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserDetailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.AdminUserSummaryResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.PagedMeta;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.exception.SelfRoleAssignmentException;
 import lk.ac.kelaniya.ams.identity_access_service.security.UserPrincipal;
@@ -40,6 +41,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -66,44 +68,44 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "201",
                     description = "User account created successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminCreateUserResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - validation failure on request payload or weak temporary password",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "Conflict - email already registered",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<AdminCreateUserResponse> createUser(
+    public ResponseEntity<ApiResponse<AdminCreateUserResponse>> createUser(
             @Valid @RequestBody AdminCreateUserRequest request,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
         UUID adminId = principal != null ? principal.getUserId() : null;
         AdminCreateUserResponse response = adminUserService.createUser(request, adminId);
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.of(response));
     }
 
     @GetMapping
@@ -115,32 +117,33 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
-                    description = "Users retrieved successfully"
+                    description = "Users retrieved successfully",
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - invalid filter parameter or pagination argument",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<Page<AdminUserSummaryResponse>> searchUsers(
+    public ResponseEntity<ApiResponse<List<AdminUserSummaryResponse>>> searchUsers(
             @Parameter(
                     description = "Free-text search query matching case-insensitively against first name, last name, full name, or email",
                     example = "john"
@@ -166,7 +169,12 @@ public class AdminUserController {
             Pageable pageable
     ) {
         Page<AdminUserSummaryResponse> users = adminUserService.searchUsers(query, status, requestedRole, pageable);
-        return ResponseEntity.ok(users);
+        PagedMeta meta = PagedMeta.builder()
+                .page(users.getNumber())
+                .size(users.getSize())
+                .totalElements(users.getTotalElements())
+                .build();
+        return ResponseEntity.ok(ApiResponse.of(users.getContent(), meta));
     }
 
     @GetMapping("/{userId}")
@@ -178,38 +186,38 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the SYSTEM_ADMINISTRATOR role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "User details retrieved successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminUserDetailResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "User not found with the specified ID",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<AdminUserDetailResponse> getUserById(
+    public ResponseEntity<ApiResponse<AdminUserDetailResponse>> getUserById(
             @Parameter(description = "Unique user identifier (UUID)", required = true, example = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
             @PathVariable UUID userId
     ) {
         AdminUserDetailResponse user = adminUserService.getUserById(userId);
-        return ResponseEntity.ok(user);
+        return ResponseEntity.ok(ApiResponse.of(user));
     }
 
     @PatchMapping("/{userId}/status")
@@ -226,38 +234,38 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "Account status updated successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminUserDetailResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - invalid status transition or missing mandatory reason",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "User not found with the specified ID",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<AdminUserDetailResponse> updateAccountStatus(
+    public ResponseEntity<ApiResponse<AdminUserDetailResponse>> updateAccountStatus(
             @Parameter(description = "Unique user identifier (UUID)", required = true, example = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
             @PathVariable UUID userId,
             @Valid @RequestBody UpdateAccountStatusRequest request,
@@ -265,7 +273,7 @@ public class AdminUserController {
     ) {
         UUID adminId = principal != null ? principal.getUserId() : null;
         AdminUserDetailResponse response = adminUserService.updateAccountStatus(userId, request, adminId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 
     @PostMapping("/{userId}/roles")
@@ -279,43 +287,43 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "Role assigned successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminUserDetailResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - invalid or unrecognized role name",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role or attempting self-assignment",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "User not found with the specified ID",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "Conflict - user already holds the specified role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<AdminUserDetailResponse> assignRole(
+    public ResponseEntity<ApiResponse<AdminUserDetailResponse>> assignRole(
             @Parameter(description = "Unique user identifier (UUID)", required = true, example = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
             @PathVariable UUID userId,
             @Valid @RequestBody AssignRoleRequest request,
@@ -326,7 +334,7 @@ public class AdminUserController {
             throw new SelfRoleAssignmentException("Administrators cannot assign roles to their own account.");
         }
         AdminUserDetailResponse response = adminUserService.assignRole(userId, request.getRole(), adminId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 
     @DeleteMapping("/{userId}/roles/{roleName}")
@@ -338,43 +346,43 @@ public class AdminUserController {
                     + "Access is restricted strictly to users with the `SYSTEM_ADMINISTRATOR` role."
     )
     @ApiResponses(value = {
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "200",
                     description = "Role removed successfully",
-                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = AdminUserDetailResponse.class))
+                    content = @Content(mediaType = "application/json")
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "400",
                     description = "Bad request - invalid or unrecognized role name",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "401",
                     description = "Unauthorized - missing, invalid, or expired Bearer token",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "403",
                     description = "Forbidden - requires SYSTEM_ADMINISTRATOR role or attempting self-removal",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "404",
                     description = "User not found with the specified ID",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "409",
                     description = "Conflict - user does not hold the specified role",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             ),
-            @ApiResponse(
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(
                     responseCode = "500",
                     description = "Internal server error",
                     content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
             )
     })
-    public ResponseEntity<AdminUserDetailResponse> removeRole(
+    public ResponseEntity<ApiResponse<AdminUserDetailResponse>> removeRole(
             @Parameter(description = "Unique user identifier (UUID)", required = true, example = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
             @PathVariable UUID userId,
             @Parameter(description = "Role name to remove", required = true, example = "FINANCE_OFFICER")
@@ -386,6 +394,6 @@ public class AdminUserController {
             throw new SelfRoleAssignmentException("Administrators cannot remove roles from their own account.");
         }
         AdminUserDetailResponse response = adminUserService.removeRole(userId, roleName, adminId);
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(ApiResponse.of(response));
     }
 }

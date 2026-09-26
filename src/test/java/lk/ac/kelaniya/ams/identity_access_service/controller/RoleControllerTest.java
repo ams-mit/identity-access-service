@@ -146,14 +146,14 @@ class RoleControllerTest {
         mockMvc.perform(get("/api/v1/roles")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", hasSize(8)))
-                .andExpect(jsonPath("$[0].name", is("APARTMENT_MANAGER")))
-                .andExpect(jsonPath("$[1].name", is("FINANCE_OFFICER")))
-                .andExpect(jsonPath("$[2].name", is("MAINTENANCE_COORDINATOR")))
-                .andExpect(jsonPath("$[3].name", is("OWNER")))
-                .andExpect(jsonPath("$[4].name", is("SECURITY_OFFICER")))
-                .andExpect(jsonPath("$[5].name", is("SYSTEM_ADMINISTRATOR")))
-                .andExpect(jsonPath("$[6].name", is("TECHNICIAN")))
-                .andExpect(jsonPath("$[7].name", is("TENANT_RESIDENT")));
+                .andExpect(jsonPath("$.data", hasSize(8)))
+                .andExpect(jsonPath("$.data[0].name", is("APARTMENT_MANAGER")))
+                .andExpect(jsonPath("$.data[1].name", is("FINANCE_OFFICER")))
+                .andExpect(jsonPath("$.data[2].name", is("MAINTENANCE_COORDINATOR")))
+                .andExpect(jsonPath("$.data[3].name", is("OWNER")))
+                .andExpect(jsonPath("$.data[4].name", is("SECURITY_OFFICER")))
+                .andExpect(jsonPath("$.data[5].name", is("SYSTEM_ADMINISTRATOR")))
+                .andExpect(jsonPath("$.data[6].name", is("TECHNICIAN")))
+                .andExpect(jsonPath("$.data[7].name", is("TENANT_RESIDENT")));
     }
 }

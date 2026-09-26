@@ -6,6 +6,7 @@ import ch.qos.logback.core.read.ListAppender;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.ForgotPasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.ResetPasswordRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ApiResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.MessageResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
@@ -15,8 +16,11 @@ import lk.ac.kelaniya.ams.identity_access_service.service.AuthService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.core.ParameterizedTypeReference;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -56,15 +60,17 @@ class PasswordResetLifecycleIntegrationTest extends AbstractIntegrationTest {
                     .email(email)
                     .build();
 
-            ResponseEntity<MessageResponse> forgotResponse = restTemplate.postForEntity(
+            ResponseEntity<ApiResponse<MessageResponse>> forgotResponse = restTemplate.exchange(
                     "/api/v1/auth/forgot-password",
-                    forgotRequest,
-                    MessageResponse.class
+                    HttpMethod.POST,
+                    new HttpEntity<>(forgotRequest),
+                    new ParameterizedTypeReference<ApiResponse<MessageResponse>>() {}
             );
 
             assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(forgotResponse.getBody()).isNotNull();
-            assertThat(forgotResponse.getBody().getMessage()).contains("instructions will be provided");
+            assertThat(forgotResponse.getBody().getData()).isNotNull();
+            assertThat(forgotResponse.getBody().getData().getMessage()).contains("instructions will be provided");
 
             // Step 2: Retrieve the real token by querying the real database directly
             List<PasswordResetToken> tokens = passwordResetTokenRepository.findAll();
@@ -101,15 +107,17 @@ class PasswordResetLifecycleIntegrationTest extends AbstractIntegrationTest {
                     .confirmNewPassword(newPassword)
                     .build();
 
-            ResponseEntity<MessageResponse> resetResponse = restTemplate.postForEntity(
+            ResponseEntity<ApiResponse<MessageResponse>> resetResponse = restTemplate.exchange(
                     "/api/v1/auth/reset-password",
-                    resetRequest,
-                    MessageResponse.class
+                    HttpMethod.POST,
+                    new HttpEntity<>(resetRequest),
+                    new ParameterizedTypeReference<ApiResponse<MessageResponse>>() {}
             );
 
             assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(resetResponse.getBody()).isNotNull();
-            assertThat(resetResponse.getBody().getMessage()).contains("Password has been reset successfully");
+            assertThat(resetResponse.getBody().getData()).isNotNull();
+            assertThat(resetResponse.getBody().getData().getMessage()).contains("Password has been reset successfully");
 
             // Step 4: Verify in database that the token is now marked as used
             PasswordResetToken updatedDbToken = passwordResetTokenRepository.findById(dbToken.getId()).orElseThrow();
@@ -135,14 +143,16 @@ class PasswordResetLifecycleIntegrationTest extends AbstractIntegrationTest {
                     .password(newPassword)
                     .build();
 
-            ResponseEntity<LoginResponse> newLoginResponse = restTemplate.postForEntity(
+            ResponseEntity<ApiResponse<LoginResponse>> newLoginResponse = restTemplate.exchange(
                     "/api/v1/auth/login",
-                    newLoginRequest,
-                    LoginResponse.class
+                    HttpMethod.POST,
+                    new HttpEntity<>(newLoginRequest),
+                    new ParameterizedTypeReference<ApiResponse<LoginResponse>>() {}
             );
             assertThat(newLoginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(newLoginResponse.getBody()).isNotNull();
-            assertThat(newLoginResponse.getBody().getAccessToken()).isNotBlank();
+            assertThat(newLoginResponse.getBody().getData()).isNotNull();
+            assertThat(newLoginResponse.getBody().getData().getAccessToken()).isNotBlank();
         } finally {
             authServiceLogger.detachAppender(listAppender);
         }
