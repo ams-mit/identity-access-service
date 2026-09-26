@@ -45,10 +45,19 @@ class UserServiceTest {
     private UserService userService;
 
     @Test
-    @DisplayName("getCurrentUser returns user profile when user exists and is active")
+    @DisplayName("getCurrentUser returns user profile with roles and permissions when user exists and is active")
     void testGetCurrentUser_success() {
         UUID userId = UUID.randomUUID();
-        Role roleResident = Role.builder().id(UUID.randomUUID()).name("ROLE_RESIDENT").build();
+        lk.ac.kelaniya.ams.identity_access_service.entity.Permission perm = lk.ac.kelaniya.ams.identity_access_service.entity.Permission.builder()
+                .id(UUID.randomUUID())
+                .code("VIEW_ANNOUNCEMENT")
+                .description("View announcements")
+                .build();
+        Role roleResident = Role.builder()
+                .id(UUID.randomUUID())
+                .name("ROLE_RESIDENT")
+                .permissions(java.util.Set.of(perm))
+                .build();
 
         User user = User.builder()
                 .id(userId)
@@ -71,6 +80,7 @@ class UserServiceTest {
         assertThat(response.getLastName()).isEqualTo("Doe");
         assertThat(response.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
         assertThat(response.getRoles()).containsExactly("ROLE_RESIDENT");
+        assertThat(response.getPermissions()).containsExactly("VIEW_ANNOUNCEMENT");
         assertThat(response.getRequestedRole()).isEqualTo("OWNER");
     }
 

@@ -113,6 +113,7 @@ class UserControllerTest {
                 .lastName("Smith")
                 .accountStatus(AccountStatus.ACTIVE)
                 .roles(List.of("ROLE_MANAGER"))
+                .permissions(List.of("VIEW_MAINTENANCE_REQUEST"))
                 .requestedRole("APARTMENT_MANAGER")
                 .build();
 
@@ -127,6 +128,7 @@ class UserControllerTest {
                 .andExpect(jsonPath("$.data.lastName", is("Smith")))
                 .andExpect(jsonPath("$.data.accountStatus", is("ACTIVE")))
                 .andExpect(jsonPath("$.data.roles[0]", is("ROLE_MANAGER")))
+                .andExpect(jsonPath("$.data.permissions[0]", is("VIEW_MAINTENANCE_REQUEST")))
                 .andExpect(jsonPath("$.data.requestedRole", is("APARTMENT_MANAGER")));
     }
 
