@@ -52,4 +52,7 @@ public class AdminCreateUserRequest {
     )
     @Schema(description = "Temporary password set by admin (minimum 8 characters, at least one digit)", example = "TempPassword123")
     private String temporaryPassword;
+
+    @Schema(description = "Optional list of initial role names to assign upon user creation", example = "[\"FINANCE_OFFICER\"]")
+    private java.util.List<String> initialRoles;
 }

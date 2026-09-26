@@ -28,6 +28,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -386,6 +388,25 @@ public class AdminUserService {
             throw new DuplicateEmailException("Email already in use");
         }
 
+        List<Role> rolesToAssign = new ArrayList<>();
+        if (request.getInitialRoles() != null && !request.getInitialRoles().isEmpty()) {
+            Set<String> seenRoles = new HashSet<>();
+            for (String roleName : request.getInitialRoles()) {
+                if (roleName == null || !VALID_ROLES.contains(roleName.trim())) {
+                    log.warn("Admin user creation rejected: invalid role name '{}'", roleName);
+                    throw new InvalidRoleException(
+                            "Invalid role: '" + roleName + "'. Valid roles are: " + String.join(", ", VALID_ROLES)
+                    );
+                }
+                String normalizedRole = roleName.trim();
+                if (seenRoles.add(normalizedRole)) {
+                    Role role = roleRepository.findByName(normalizedRole)
+                            .orElseThrow(() -> new InvalidRoleException("Role not found: " + normalizedRole));
+                    rolesToAssign.add(role);
+                }
+            }
+        }
+
         String passwordHash = passwordEncoder.encode(request.getTemporaryPassword());
 
         User user = User.builder()
@@ -405,6 +426,10 @@ public class AdminUserService {
                 .failedAttemptCount(0)
                 .build();
 
+        for (Role role : rolesToAssign) {
+            user.addRole(role);
+        }
+
         User savedUser = userRepository.save(user);
         log.info("AUDIT: Admin-created user account successfully saved with id: {} and email: {}",
                 savedUser.getId(), savedUser.getEmail());
@@ -418,11 +443,28 @@ public class AdminUserService {
                 null
         );
 
+        for (Role role : rolesToAssign) {
+            log.info("AUDIT: Initial role '{}' assigned to user id: {} by admin id: {}", role.getName(), savedUser.getId(), adminId);
+            recordAudit(
+                    AuditEventType.ROLE_ASSIGNED,
+                    savedUser.getId(),
+                    adminId,
+                    null,
+                    role.getName(),
+                    null
+            );
+        }
+
+        List<String> assignedRoleNames = rolesToAssign.stream()
+                .map(Role::getName)
+                .toList();
+
         return AdminCreateUserResponse.builder()
                 .userId(savedUser.getId())
                 .email(savedUser.getEmail())
                 .accountStatus(savedUser.getAccountStatus())
                 .mustChangePassword(savedUser.isMustChangePassword())
+                .roles(assignedRoleNames)
                 .build();
     }
 

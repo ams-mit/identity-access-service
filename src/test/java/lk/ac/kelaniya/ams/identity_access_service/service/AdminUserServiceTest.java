@@ -1033,4 +1033,87 @@ class AdminUserServiceTest {
         verify(passwordEncoder, never()).encode(any());
         verify(userRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("createUser: assigns initialRoles upon creation and records ROLE_ASSIGNED audit events")
+    void testCreateUser_withInitialRoles_assignsRolesAndRecordsAudits() {
+        UUID expectedId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        AdminCreateUserRequest request = AdminCreateUserRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.staff@ams.lk")
+                .temporaryPassword("TempSecret123")
+                .initialRoles(List.of("FINANCE_OFFICER", "TECHNICIAN"))
+                .build();
+
+        Role roleFinance = Role.builder().id(UUID.randomUUID()).name("FINANCE_OFFICER").build();
+        Role roleTech = Role.builder().id(UUID.randomUUID()).name("TECHNICIAN").build();
+
+        given(userRepository.existsByEmail("jane.staff@ams.lk")).willReturn(false);
+        given(passwordEncoder.encode("TempSecret123")).willReturn("$2a$10$hashedBCryptPassword");
+        given(roleRepository.findByName("FINANCE_OFFICER")).willReturn(Optional.of(roleFinance));
+        given(roleRepository.findByName("TECHNICIAN")).willReturn(Optional.of(roleTech));
+        given(userRepository.save(any(User.class))).willAnswer(inv -> {
+            User u = inv.getArgument(0);
+            u.setId(expectedId);
+            return u;
+        });
+
+        AdminCreateUserResponse response = adminUserService.createUser(request, adminId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getRoles()).containsExactlyInAnyOrder("FINANCE_OFFICER", "TECHNICIAN");
+
+        ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(captor.capture());
+        User savedUser = captor.getValue();
+        assertThat(savedUser.getUserRoles()).hasSize(2);
+
+        verify(auditService).record(
+                AuditEventType.USER_CREATED_BY_ADMIN,
+                expectedId,
+                adminId,
+                null,
+                "jane.staff@ams.lk",
+                null
+        );
+        verify(auditService).record(
+                AuditEventType.ROLE_ASSIGNED,
+                expectedId,
+                adminId,
+                null,
+                "FINANCE_OFFICER",
+                null
+        );
+        verify(auditService).record(
+                AuditEventType.ROLE_ASSIGNED,
+                expectedId,
+                adminId,
+                null,
+                "TECHNICIAN",
+                null
+        );
+    }
+
+    @Test
+    @DisplayName("createUser: throws InvalidRoleException when initialRoles contains unknown or invalid role")
+    void testCreateUser_withInvalidInitialRole_throwsInvalidRoleException() {
+        AdminCreateUserRequest request = AdminCreateUserRequest.builder()
+                .firstName("Jane")
+                .lastName("Doe")
+                .email("jane.invalid@ams.lk")
+                .temporaryPassword("TempSecret123")
+                .initialRoles(List.of("UNKNOWN_SUPER_ROLE"))
+                .build();
+
+        given(userRepository.existsByEmail("jane.invalid@ams.lk")).willReturn(false);
+
+        assertThatThrownBy(() -> adminUserService.createUser(request))
+                .isInstanceOf(InvalidRoleException.class)
+                .hasMessageContaining("Invalid role: 'UNKNOWN_SUPER_ROLE'");
+
+        verify(userRepository, never()).save(any());
+        verify(auditService, never()).record(any(), any(), any(), any(), any(), any());
+    }
 }

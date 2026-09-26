@@ -866,6 +866,68 @@ class AdminUserControllerTest {
     }
 
     @Test
+    @DisplayName("POST /api/v1/users with initialRoles returns 201 with assigned roles")
+    void testCreateUser_withInitialRoles_returns201WithRoles() throws Exception {
+        UUID newUserId = UUID.randomUUID();
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        AdminCreateUserResponse response = AdminCreateUserResponse.builder()
+                .userId(newUserId)
+                .email("jane.staff@ams.lk")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .roles(List.of("FINANCE_OFFICER"))
+                .build();
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any())).willReturn(response);
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.staff@ams.lk\","
+                + "\"phone\":\"+94771234567\","
+                + "\"temporaryPassword\":\"TempSecret123\","
+                + "\"initialRoles\":[\"FINANCE_OFFICER\"]"
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.userId", is(newUserId.toString())))
+                .andExpect(jsonPath("$.data.roles[0]", is("FINANCE_OFFICER")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/users returns 400 Bad Request when initialRoles contains invalid role")
+    void testCreateUser_invalidInitialRole_returns400() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        String token = "valid.sysadmin.token";
+        mockValidToken(token, adminId, "admin@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        given(adminUserService.createUser(any(AdminCreateUserRequest.class), any()))
+                .willThrow(new InvalidRoleException("Invalid role: 'INVALID_ROLE'. Valid roles are: ..."));
+
+        String json = "{"
+                + "\"firstName\":\"Jane\","
+                + "\"lastName\":\"Doe\","
+                + "\"email\":\"jane.invalid@ams.lk\","
+                + "\"temporaryPassword\":\"TempSecret123\","
+                + "\"initialRoles\":[\"INVALID_ROLE\"]"
+                + "}";
+
+        mockMvc.perform(post("/api/v1/users")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_ROLE")));
+    }
+
+    @Test
     @DisplayName("POST /api/v1/users returns 409 Conflict when email is already registered")
     void testCreateUser_duplicateEmail_returns409() throws Exception {
         UUID adminId = UUID.randomUUID();
