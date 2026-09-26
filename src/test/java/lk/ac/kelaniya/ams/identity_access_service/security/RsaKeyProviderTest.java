@@ -26,6 +26,8 @@ class RsaKeyProviderTest {
     private RsaKeyProvider provider;
     private Path privateKeyFile;
     private Path publicKeyFile;
+    private Path gatewayPublicKeyFile;
+    private Path servicePrivateKeyFile;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -36,6 +38,16 @@ class RsaKeyProviderTest {
         privateKeyFile = tempDir.resolve("private_key.pem");
         publicKeyFile = tempDir.resolve("public_key.pem");
         RsaKeyPairGenerator.writeKeys(keyPair, privateKeyFile, publicKeyFile);
+
+        KeyPair gwKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        Path gwPrivKeyFile = tempDir.resolve("gw_priv.pem");
+        gatewayPublicKeyFile = tempDir.resolve("gw_pub.pem");
+        RsaKeyPairGenerator.writeKeys(gwKeyPair, gwPrivKeyFile, gatewayPublicKeyFile);
+
+        KeyPair svcKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
+        servicePrivateKeyFile = tempDir.resolve("svc_priv.pem");
+        Path svcPubKeyFile = tempDir.resolve("svc_pub.pem");
+        RsaKeyPairGenerator.writeKeys(svcKeyPair, servicePrivateKeyFile, svcPubKeyFile);
     }
 
     @Test
@@ -43,6 +55,8 @@ class RsaKeyProviderTest {
     void testLoadKeys_success() {
         properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
         properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setGatewayPublicKeyPath(gatewayPublicKeyFile.toUri().toString());
+        properties.setServicePrivateKeyPath(servicePrivateKeyFile.toUri().toString());
         properties.setKeyId("test-key-id");
 
         provider.init();
@@ -172,6 +186,8 @@ class RsaKeyProviderTest {
     void testLoadKeys_externalFilePath() {
         properties.setPrivateKeyPath("file:" + privateKeyFile.toAbsolutePath().toString().replace('\\', '/'));
         properties.setPublicKeyPath("file:" + publicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        properties.setGatewayPublicKeyPath("file:" + gatewayPublicKeyFile.toAbsolutePath().toString().replace('\\', '/'));
+        properties.setServicePrivateKeyPath("file:" + servicePrivateKeyFile.toAbsolutePath().toString().replace('\\', '/'));
         properties.setKeyId("external-file-kid");
 
         provider.init();
@@ -182,43 +198,45 @@ class RsaKeyProviderTest {
     }
 
     @Test
-    @DisplayName("Should load gateway public key when configured, or fall back to public key when unset")
-    void testLoadGatewayPublicKey() throws Exception {
+    @DisplayName("Should fail fast with IllegalStateException when gateway public key is not configured")
+    void testMissingGatewayPublicKey_failsFast() {
         properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
         properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setGatewayPublicKeyPath(null);
+        properties.setGatewayPublicKey(null);
+        properties.setServicePrivateKeyPath(servicePrivateKeyFile.toUri().toString());
 
-        provider.init();
-        assertThat(provider.getGatewayPublicKey()).isEqualTo(provider.getPublicKey());
-
-        // Now configure a distinct gateway public key
-        KeyPair gwKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
-        Path gwPubKeyFile = tempDir.resolve("gw_pub.pem");
-        Path gwPrivKeyFile = tempDir.resolve("gw_priv.pem");
-        RsaKeyPairGenerator.writeKeys(gwKeyPair, gwPrivKeyFile, gwPubKeyFile);
-
-        properties.setGatewayPublicKeyPath(gwPubKeyFile.toUri().toString());
-        provider.init();
-        assertThat(provider.getGatewayPublicKey()).isNotNull();
-        assertThat(provider.getGatewayPublicKey()).isNotEqualTo(provider.getPublicKey());
+        assertThatThrownBy(() -> provider.init())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("GATEWAY_JWT_PUBLIC_KEY");
     }
 
     @Test
-    @DisplayName("Should load service private key when configured, or fall back to user private key when unset")
-    void testLoadServicePrivateKey() throws Exception {
+    @DisplayName("Should fail fast with IllegalStateException when service private key is not configured")
+    void testMissingServicePrivateKey_failsFast() {
         properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
         properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setGatewayPublicKeyPath(gatewayPublicKeyFile.toUri().toString());
+        properties.setServicePrivateKeyPath(null);
+        properties.setServicePrivateKey(null);
+
+        assertThatThrownBy(() -> provider.init())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SERVICE_JWT_PRIVATE_KEY");
+    }
+
+    @Test
+    @DisplayName("Should load distinct gateway public key and service private key when configured")
+    void testLoadGatewayAndServiceKeys_distinctFromUserKeys() {
+        properties.setPrivateKeyPath(privateKeyFile.toUri().toString());
+        properties.setPublicKeyPath(publicKeyFile.toUri().toString());
+        properties.setGatewayPublicKeyPath(gatewayPublicKeyFile.toUri().toString());
+        properties.setServicePrivateKeyPath(servicePrivateKeyFile.toUri().toString());
 
         provider.init();
-        assertThat(provider.getServicePrivateKey()).isEqualTo(provider.getPrivateKey());
 
-        // Now configure a distinct service private key
-        KeyPair svcKeyPair = RsaKeyPairGenerator.generateKeyPair(2048);
-        Path svcPubKeyFile = tempDir.resolve("svc_pub.pem");
-        Path svcPrivKeyFile = tempDir.resolve("svc_priv.pem");
-        RsaKeyPairGenerator.writeKeys(svcKeyPair, svcPrivKeyFile, svcPubKeyFile);
-
-        properties.setServicePrivateKeyPath(svcPrivKeyFile.toUri().toString());
-        provider.init();
+        assertThat(provider.getGatewayPublicKey()).isNotNull();
+        assertThat(provider.getGatewayPublicKey()).isNotEqualTo(provider.getPublicKey());
         assertThat(provider.getServicePrivateKey()).isNotNull();
         assertThat(provider.getServicePrivateKey()).isNotEqualTo(provider.getPrivateKey());
     }

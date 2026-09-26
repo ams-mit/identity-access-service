@@ -49,6 +49,8 @@ class IdentityAccessServiceApplicationTests {
 
 		registry.add("jwt.private-key-path", () -> privateKeyFile.toUri().toString());
 		registry.add("jwt.public-key-path", () -> publicKeyFile.toUri().toString());
+		registry.add("jwt.gateway-public-key-path", () -> publicKeyFile.toUri().toString());
+		registry.add("jwt.service-private-key-path", () -> privateKeyFile.toUri().toString());
 
 		registry.add("spring.mail.host", () -> "localhost");
 		registry.add("spring.mail.port", () -> "2525");
