@@ -46,6 +46,8 @@ internal-api:
       - operations-service
       - community-service
       - property-unit-service
+    email-update:
+      - resident-management-service
 auth:
   password-reset:
     token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}

@@ -8,8 +8,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateUserEmailRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.InternalUserResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.UpdateUserEmailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.security.InternalCallerAuthorizationService;
 import lk.ac.kelaniya.ams.identity_access_service.security.ServicePrincipal;
 import lk.ac.kelaniya.ams.identity_access_service.service.InternalUserService;
@@ -22,6 +25,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -108,6 +113,78 @@ public class InternalUserController {
         }
 
         InternalUserResponse response = internalUserService.getUserForValidation(userId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Updates a user's email address on behalf of an authorized internal service (resident-management-service).
+     * Rejects missing/invalid tokens and User JWTs with HTTP 401 Unauthorized.
+     * Rejects services other than resident-management-service with HTTP 403 Forbidden.
+     *
+     * @param userId  Unique user identifier whose email is to be updated
+     * @param request Validated email update request payload
+     * @return Updated user email response (userId, email)
+     */
+    @PutMapping("/{userId}/email")
+    @PreAuthorize("hasRole('SERVICE')")
+    @Operation(
+            summary = "Update user email address (Internal)",
+            description = "Updates the email address of a user. Restricted exclusively to resident-management-service holding a valid Service JWT. "
+                    + "Authentication failures (missing, invalid, or expired tokens, or User JWTs presented instead of a Service JWT) return HTTP 401 Unauthorized. "
+                    + "Calling services other than resident-management-service return HTTP 403 Forbidden.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses(value = {
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "User email successfully updated",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = UpdateUserEmailResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Invalid email format or validation error",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Unauthorized - missing, invalid, expired token, or User JWT supplied instead of Service JWT",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "Forbidden - valid service token presented, but calling service is not authorized for email updates",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Not found - requested user ID does not exist",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            ),
+            @ApiResponse(
+                    responseCode = "409",
+                    description = "Conflict - email already registered to another user",
+                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = ErrorResponse.class))
+            )
+    })
+    public ResponseEntity<UpdateUserEmailResponse> updateUserEmail(
+            @Parameter(description = "Unique user identifier whose email is being updated", required = true, example = "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d")
+            @PathVariable UUID userId,
+            @Valid @RequestBody UpdateUserEmailRequest request
+    ) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String callerServiceName = (auth != null && auth.getPrincipal() instanceof ServicePrincipal sp)
+                ? sp.getServiceName()
+                : null;
+
+        if (callerServiceName == null || !internalCallerAuthorizationService.isAllowed(callerServiceName, InternalCallerAuthorizationService.EMAIL_UPDATE_ENDPOINT)) {
+            log.warn("Access denied: Caller service '{}' is not authorized to access internal endpoint '/internal/v1/users/{}/email'",
+                    callerServiceName != null ? callerServiceName : "anonymous", userId);
+            throw new AccessDeniedException(
+                    "Caller service '" + callerServiceName + "' is not authorized to access internal endpoint 'email-update'"
+            );
+        }
+
+        UpdateUserEmailResponse response = internalUserService.updateUserEmail(userId, request.getNewEmail(), callerServiceName);
         return ResponseEntity.ok(response);
     }
 }

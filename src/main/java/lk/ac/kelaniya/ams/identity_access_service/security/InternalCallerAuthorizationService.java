@@ -25,6 +25,7 @@ import java.util.Map;
 public class InternalCallerAuthorizationService {
 
     public static final String USER_VALIDATION_ENDPOINT = "user-validation";
+    public static final String EMAIL_UPDATE_ENDPOINT = "email-update";
 
     /**
      * Map of endpointKey -> list of allowed caller service names.
@@ -45,10 +46,17 @@ public class InternalCallerAuthorizationService {
     );
 
     /**
+     * Fallback default allow-list for email-update endpoint (restricted strictly to resident-management-service).
+     */
+    public static final List<String> DEFAULT_EMAIL_UPDATE_CALLERS = List.of(
+            "resident-management-service"
+    );
+
+    /**
      * Checks if the specified caller service is allow-listed for the given endpoint key.
      *
      * @param callerServiceName the calling microservice name (ServicePrincipal.getServiceName())
-     * @param endpointKey       the internal endpoint identifier (e.g. "user-validation")
+     * @param endpointKey       the internal endpoint identifier (e.g. "user-validation", "email-update")
      * @return true if caller is authorized, false otherwise
      */
     public boolean isAllowed(String callerServiceName, String endpointKey) {
@@ -60,6 +68,8 @@ public class InternalCallerAuthorizationService {
         if (allowed == null || allowed.isEmpty()) {
             if (USER_VALIDATION_ENDPOINT.equals(endpointKey)) {
                 allowed = DEFAULT_USER_VALIDATION_CALLERS;
+            } else if (EMAIL_UPDATE_ENDPOINT.equals(endpointKey)) {
+                allowed = DEFAULT_EMAIL_UPDATE_CALLERS;
             } else {
                 allowed = Collections.emptyList();
             }

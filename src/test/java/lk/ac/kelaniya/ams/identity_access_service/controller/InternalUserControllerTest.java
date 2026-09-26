@@ -4,8 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import io.jsonwebtoken.security.SignatureException;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.UpdateUserEmailRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.InternalUserResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.UpdateUserEmailResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
 import lk.ac.kelaniya.ams.identity_access_service.exception.UserNotFoundException;
 import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
@@ -28,6 +31,7 @@ import static org.hamcrest.Matchers.is;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -208,5 +212,153 @@ class InternalUserControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email with resident-management-service token returns 200 and updated email")
+    void testUpdateUserEmail_validServiceTokenFromResidentManagementService_returns200() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "valid.rms.service.token";
+        String newEmail = "updated.resident@ams.lk";
+
+        mockValidServiceToken(serviceToken, "resident-management-service");
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail(newEmail)
+                .build();
+
+        UpdateUserEmailResponse response = UpdateUserEmailResponse.builder()
+                .userId(userId)
+                .email(newEmail)
+                .build();
+
+        given(internalUserService.updateUserEmail(userId, newEmail, "resident-management-service"))
+                .willReturn(response);
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.email", is(newEmail)))
+                .andExpect(jsonPath("$.password").doesNotExist())
+                .andExpect(jsonPath("$.passwordHash").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email with duplicate email returns 409 CONFLICT")
+    void testUpdateUserEmail_duplicateEmail_returns409Conflict() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "valid.rms.service.token";
+        String duplicateEmail = "already.taken@ams.lk";
+
+        mockValidServiceToken(serviceToken, "resident-management-service");
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail(duplicateEmail)
+                .build();
+
+        given(internalUserService.updateUserEmail(userId, duplicateEmail, "resident-management-service"))
+                .willThrow(new DuplicateEmailException("Email is already registered: " + duplicateEmail));
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("EMAIL_ALREADY_EXISTS")));
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email with non-allow-listed service token returns 403 FORBIDDEN")
+    void testUpdateUserEmail_nonAllowListedServiceToken_returns403Forbidden() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "valid.other.service.token";
+
+        // billing-payment-service is a valid service but NOT allowed for email-update
+        mockValidServiceToken(serviceToken, "billing-payment-service");
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail("valid.email@ams.lk")
+                .build();
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("FORBIDDEN")));
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email with user token returns 401 UNAUTHORIZED")
+    void testUpdateUserEmail_userToken_returns401Unauthorized() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String userToken = "valid.user.token";
+
+        mockValidUserToken(userToken, userId, "resident@ams.lk", List.of("SYSTEM_ADMINISTRATOR"));
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail("valid.email@ams.lk")
+                .build();
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", userId)
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code", is("UNAUTHORIZED")))
+                .andExpect(jsonPath("$.error.message", is("Authentication required")));
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email for non-existent user returns 404 NOT FOUND")
+    void testUpdateUserEmail_userNotFound_returns404NotFound() throws Exception {
+        UUID nonExistentUserId = UUID.randomUUID();
+        String serviceToken = "valid.rms.service.token";
+        String newEmail = "valid.email@ams.lk";
+
+        mockValidServiceToken(serviceToken, "resident-management-service");
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail(newEmail)
+                .build();
+
+        given(internalUserService.updateUserEmail(nonExistentUserId, newEmail, "resident-management-service"))
+                .willThrow(new UserNotFoundException("User not found with id: " + nonExistentUserId));
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", nonExistentUserId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("USER_NOT_FOUND")));
+    }
+
+    @Test
+    @DisplayName("PUT /internal/v1/users/{userId}/email with invalid email returns 400 BAD REQUEST")
+    void testUpdateUserEmail_invalidEmail_returns400BadRequest() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String serviceToken = "valid.rms.service.token";
+
+        mockValidServiceToken(serviceToken, "resident-management-service");
+
+        UpdateUserEmailRequest request = UpdateUserEmailRequest.builder()
+                .newEmail("not-a-valid-email")
+                .build();
+
+        mockMvc.perform(put("/internal/v1/users/{userId}/email", userId)
+                        .header("Authorization", "Bearer " + serviceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request))
+                        .accept(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
     }
 }
