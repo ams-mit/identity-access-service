@@ -1,9 +1,12 @@
 package lk.ac.kelaniya.ams.identity_access_service.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ForgotPasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.LoginRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.request.RegisterRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ResetPasswordRequest;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.LoginResponse;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.MessageResponse;
 import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
@@ -11,6 +14,7 @@ import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusExcepti
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.GlobalExceptionHandler;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidResetTokenException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
@@ -89,25 +93,19 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId", is(generatedId.toString())))
-                .andExpect(jsonPath("$.email", is("jane.doe@example.com")))
-                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.requestedRole", is("OWNER")))
+                .andExpect(jsonPath("$.data.userId", is(generatedId.toString())))
+                .andExpect(jsonPath("$.data.email", is("jane.doe@example.com")))
+                .andExpect(jsonPath("$.data.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data.requestedRole", is("OWNER")))
                 .andExpect(content().string(not(containsString("SecurePass1"))));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "SYSTEM_ADMINISTRATOR",
-            "APARTMENT_MANAGER",
             "OWNER",
-            "TENANT_RESIDENT",
-            "FINANCE_OFFICER",
-            "MAINTENANCE_COORDINATOR",
-            "TECHNICIAN",
-            "SECURITY_OFFICER"
+            "TENANT_RESIDENT"
     })
-    @DisplayName("POST /api/v1/auth/register returns 201 for each of the 8 valid requested roles")
+    @DisplayName("POST /api/v1/auth/register returns 201 for valid resident-facing requested roles (OWNER, TENANT_RESIDENT)")
     void testRegister_allValidRequestedRoles_returns201(String role) throws Exception {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Jane")
@@ -133,14 +131,20 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.userId", is(generatedId.toString())))
-                .andExpect(jsonPath("$.email", is(request.getEmail())))
-                .andExpect(jsonPath("$.accountStatus", is("PENDING_VERIFICATION")))
-                .andExpect(jsonPath("$.requestedRole", is(role)));
+                .andExpect(jsonPath("$.data.userId", is(generatedId.toString())))
+                .andExpect(jsonPath("$.data.email", is(request.getEmail())))
+                .andExpect(jsonPath("$.data.accountStatus", is("PENDING_VERIFICATION")))
+                .andExpect(jsonPath("$.data.requestedRole", is(role)));
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SECURITY_OFFICER",
             "INVALID_ROLE",
             "SYSTEM_ADMIN",
             "ADMINISTRATOR",
@@ -150,7 +154,7 @@ class AuthControllerTest {
             "MANAGER",
             "TENANT"
     })
-    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is invalid or unrecognized")
+    @DisplayName("POST /api/v1/auth/register returns 400 when requestedRole is invalid or disallowed (including staff/admin roles)")
     void testRegister_invalidRequestedRole_returns400(String invalidRole) throws Exception {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Jane")
@@ -334,11 +338,11 @@ class AuthControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken", is("mocked.rs256.jwt.token")))
-                .andExpect(jsonPath("$.expiresIn", is(1800)))
-                .andExpect(jsonPath("$.user.userId", is(userId.toString())))
-                .andExpect(jsonPath("$.user.email", is("john.doe@example.com")))
-                .andExpect(jsonPath("$.user.roles[0]", is("RESIDENT")))
+                .andExpect(jsonPath("$.data.accessToken", is("mocked.rs256.jwt.token")))
+                .andExpect(jsonPath("$.data.expiresIn", is(1800)))
+                .andExpect(jsonPath("$.data.user.userId", is(userId.toString())))
+                .andExpect(jsonPath("$.data.user.email", is("john.doe@example.com")))
+                .andExpect(jsonPath("$.data.user.roles[0]", is("RESIDENT")))
                 .andExpect(content().string(not(containsString("SecretPass123"))));
     }
 
@@ -488,6 +492,7 @@ class AuthControllerTest {
         Jws<Claims> claimsJws = (Jws<Claims>) mock(Jws.class);
         Claims claims = mock(Claims.class);
         given(claimsJws.getPayload()).willReturn(claims);
+        given(claims.get("type", String.class)).willReturn("user");
         given(claims.getSubject()).willReturn(UUID.randomUUID().toString());
         given(claims.get("roles", List.class)).willReturn(List.of("RESIDENT"));
         given(jwtService.parseAndValidateToken(validToken)).willReturn(claimsJws);
@@ -557,4 +562,255 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.error.code", not("EMAIL_ALREADY_EXISTS")))
                 .andExpect(jsonPath("$.error.message", is("A data conflict occurred while processing the request.")));
     }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password returns 200 with generic message for existing email")
+    void testForgotPassword_existingEmail_returns200() throws Exception {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("user@example.com")
+                .build();
+
+        MessageResponse expectedResponse = MessageResponse.builder()
+                .message("If an account is associated with this email, instructions will be provided.")
+                .build();
+
+        given(authService.forgotPassword(any(ForgotPasswordRequest.class))).willReturn(expectedResponse);
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message", is("If an account is associated with this email, instructions will be provided.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password returns SAME generic 200 message for nonexistent email (anti-enumeration)")
+    void testForgotPassword_nonexistentEmail_returnsSame200() throws Exception {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("nonexistent@example.com")
+                .build();
+
+        MessageResponse expectedResponse = MessageResponse.builder()
+                .message("If an account is associated with this email, instructions will be provided.")
+                .build();
+
+        given(authService.forgotPassword(any(ForgotPasswordRequest.class))).willReturn(expectedResponse);
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message", is("If an account is associated with this email, instructions will be provided.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password returns 400 on invalid email format")
+    void testForgotPassword_invalidEmail_returns400() throws Exception {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("not-a-valid-email")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Email must be a valid email address")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/forgot-password returns 400 on blank email")
+    void testForgotPassword_blankEmail_returns400() throws Exception {
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Email is required")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns 200 with success message on valid token")
+    void testResetPassword_success() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("valid-reset-token-123")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        MessageResponse expectedResponse = MessageResponse.builder()
+                .message("Password has been reset successfully.")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class))).willReturn(expectedResponse);
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message", is("Password has been reset successfully.")))
+                .andExpect(content().string(not(containsString("NewSecurePass999"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns generic 400 when token is expired")
+    void testResetPassword_expiredToken_returnsGeneric400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("expired-token-123")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class)))
+                .willThrow(new InvalidResetTokenException("Invalid or expired password reset token."));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_RESET_TOKEN")))
+                .andExpect(jsonPath("$.error.message", is("Invalid or expired password reset token.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns generic 400 when token is already used")
+    void testResetPassword_alreadyUsedToken_returnsGeneric400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("already-used-token-123")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class)))
+                .willThrow(new InvalidResetTokenException("Invalid or expired password reset token."));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_RESET_TOKEN")))
+                .andExpect(jsonPath("$.error.message", is("Invalid or expired password reset token.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns generic 400 when token is invalid/nonexistent")
+    void testResetPassword_invalidToken_returnsGeneric400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("garbage-invalid-token")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class)))
+                .willThrow(new InvalidResetTokenException("Invalid or expired password reset token."));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_RESET_TOKEN")))
+                .andExpect(jsonPath("$.error.message", is("Invalid or expired password reset token.")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "expired-token",
+            "already-used-token",
+            "garbage-nonexistent-token"
+    })
+    @DisplayName("POST /api/v1/auth/reset-password confirms expired, used, and invalid token cases return indistinguishable 400 responses")
+    void testResetPassword_allThreeRejections_areIndistinguishable(String tokenValue) throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken(tokenValue)
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class)))
+                .willThrow(new InvalidResetTokenException("Invalid or expired password reset token."));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("INVALID_RESET_TOKEN")))
+                .andExpect(jsonPath("$.error.message", is("Invalid or expired password reset token.")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns 400 when password and confirmation mismatch")
+    void testResetPassword_passwordMismatch_returns400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("valid-reset-token-123")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("DifferentPass888")
+                .build();
+
+        given(authService.resetPassword(any(ResetPasswordRequest.class)))
+                .willThrow(new PasswordMismatchException("New password and confirm password do not match"));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("PASSWORD_MISMATCH")))
+                .andExpect(jsonPath("$.error.message", is("New password and confirm password do not match")))
+                .andExpect(content().string(not(containsString("NewSecurePass999"))))
+                .andExpect(content().string(not(containsString("DifferentPass888"))));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns 400 on short password (under 8 chars)")
+    void testResetPassword_shortPassword_returns400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("valid-reset-token-123")
+                .newPassword("Pass1")
+                .confirmNewPassword("Pass1")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns 400 on password without digits")
+    void testResetPassword_noDigitPassword_returns400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("valid-reset-token-123")
+                .newPassword("PasswordNoDigits")
+                .confirmNewPassword("PasswordNoDigits")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("numeric digit")));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/reset-password returns 400 when reset token is blank")
+    void testResetPassword_blankToken_returns400() throws Exception {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("")
+                .newPassword("NewSecurePass999")
+                .confirmNewPassword("NewSecurePass999")
+                .build();
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("VALIDATION_ERROR")))
+                .andExpect(jsonPath("$.error.message", containsString("Reset token is required")));
+    }
 }
+

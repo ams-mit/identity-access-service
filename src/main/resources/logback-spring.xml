@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Include default Spring Boot logging properties, converters, and console formatting -->
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!--
+      Profile: !docker (default, local, test, etc.)
+      Provides clean, human-readable, colorized console output for developer experience during local development.
+    -->
+    <springProfile name="!docker">
+        <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!--
+      Profile: docker
+      Outputs structured single-line JSON to standard output (stdout) for cloud-native container log ingestion.
+      No files are written inside the container; stdout log streaming delegates to container runtime log drivers.
+      Sensitive data discipline is maintained: no request/response payload or credential logging is introduced.
+    -->
+    <springProfile name="docker">
+        <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+                <includeMdc>true</includeMdc>
+                <includeContext>true</includeContext>
+                <customFields>{"service":"identity-access-service"}</customFields>
+            </encoder>
+        </appender>
+        <root level="INFO">
+            <appender-ref ref="JSON_CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>

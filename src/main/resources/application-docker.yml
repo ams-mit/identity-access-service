@@ -4,6 +4,11 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
 jwt:
-  private-key-path: ${JWT_PRIVATE_KEY_PATH}
-  public-key-path: ${JWT_PUBLIC_KEY_PATH}
-  expiration-seconds: 3600
+  private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH:}
+  gateway-public-key-path: ${GATEWAY_JWT_PUBLIC_KEY_PATH:}
+  gateway-public-key: ${GATEWAY_JWT_PUBLIC_KEY:}
+  service-private-key-path: ${SERVICE_JWT_PRIVATE_KEY_PATH:}
+  service-private-key: ${SERVICE_JWT_PRIVATE_KEY:}
+  expiration-seconds: 1800
+  service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}

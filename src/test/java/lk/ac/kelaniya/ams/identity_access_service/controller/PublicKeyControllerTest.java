@@ -58,11 +58,11 @@ class PublicKeyControllerTest {
                         .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.algorithm", is("RS256")))
-                .andExpect(jsonPath("$.format", is("X.509")))
-                .andExpect(jsonPath("$.keyId", is(keyId)))
-                .andExpect(jsonPath("$.publicKey", containsString("-----BEGIN PUBLIC KEY-----")))
-                .andExpect(jsonPath("$.publicKey", containsString("-----END PUBLIC KEY-----")))
+                .andExpect(jsonPath("$.data.algorithm", is("RS256")))
+                .andExpect(jsonPath("$.data.format", is("X.509")))
+                .andExpect(jsonPath("$.data.keyId", is(keyId)))
+                .andExpect(jsonPath("$.data.publicKey", containsString("-----BEGIN PUBLIC KEY-----")))
+                .andExpect(jsonPath("$.data.publicKey", containsString("-----END PUBLIC KEY-----")))
                 .andExpect(content().string(not(containsString("PRIVATE KEY"))));
     }
 

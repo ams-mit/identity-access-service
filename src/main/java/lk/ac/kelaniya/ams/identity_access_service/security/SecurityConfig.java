@@ -1,5 +1,9 @@
 package lk.ac.kelaniya.ams.identity_access_service.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingFilter;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingProperties;
+import lk.ac.kelaniya.ams.identity_access_service.security.ratelimit.RateLimitingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -9,11 +13,14 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.ErrorResponse;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.util.List;
 
 /**
  * Spring Security configuration permitting public endpoints for registration, login, JWKS, and OpenAPI,
@@ -27,6 +34,15 @@ public class SecurityConfig {
     @Autowired(required = false)
     private JwtService jwtService;
 
+    @Autowired(required = false)
+    private RateLimitingService rateLimitingService;
+
+    @Autowired(required = false)
+    private RateLimitingProperties rateLimitingProperties;
+
+    @Autowired(required = false)
+    private ObjectMapper objectMapper;
+
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -39,28 +55,51 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                            ErrorResponse errorResponse = ErrorResponse.of(
+                                    "UNAUTHORIZED",
+                                    "Authentication required"
+                            );
+                            response.getWriter().write(mapper.writeValueAsString(errorResponse));
+                        })
                         .accessDeniedHandler((request, response, accessDeniedException) -> {
                             response.setStatus(HttpStatus.FORBIDDEN.value());
-                            response.setContentType("application/json");
-                            response.getWriter().write("{\"error\":{\"code\":\"FORBIDDEN\",\"message\":\"Access denied: insufficient permissions\"}}");
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            ObjectMapper mapper = objectMapper != null ? objectMapper : new ObjectMapper();
+                            ErrorResponse errorResponse = ErrorResponse.of("FORBIDDEN", "Access denied: insufficient permissions");
+                            response.getWriter().write(mapper.writeValueAsString(errorResponse));
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/api/v1/auth/register",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password",
                                 "/api/v1/auth/public-key",
                                 "/api/v1/auth/jwks.json",
                                 "/api/v1/auth/.well-known/**",
                                 "/.well-known/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
-                                "/v3/api-docs/**"
+                                "/v3/api-docs/**",
+                                "/actuator/health/**",
+                                "/actuator/info"
                         ).permitAll()
                         .requestMatchers("/api/v1/auth/logout").authenticated()
+                        .requestMatchers("/internal/v1/**").hasAnyRole("SERVICE", "INTERNAL_SERVICE")
                         .anyRequest().authenticated()
                 );
+
+        if (rateLimitingService != null && objectMapper != null) {
+            List<String> trustedProxies = (rateLimitingProperties != null) ? rateLimitingProperties.getTrustedProxies() : List.of();
+            http.addFilterBefore(new RateLimitingFilter(rateLimitingService, objectMapper, trustedProxies), UsernamePasswordAuthenticationFilter.class);
+        }
 
         if (jwtService != null) {
             http.addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);

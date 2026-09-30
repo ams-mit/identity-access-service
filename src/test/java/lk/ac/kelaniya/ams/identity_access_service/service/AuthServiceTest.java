@@ -7,11 +7,17 @@ import lk.ac.kelaniya.ams.identity_access_service.dto.response.RegisterResponse;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
 import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ForgotPasswordRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.request.ResetPasswordRequest;
+import lk.ac.kelaniya.ams.identity_access_service.dto.response.MessageResponse;
+import lk.ac.kelaniya.ams.identity_access_service.entity.PasswordResetToken;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountLockedException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.AccountStatusException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.DuplicateEmailException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidCredentialsException;
+import lk.ac.kelaniya.ams.identity_access_service.exception.InvalidResetTokenException;
 import lk.ac.kelaniya.ams.identity_access_service.exception.PasswordMismatchException;
+import lk.ac.kelaniya.ams.identity_access_service.repository.PasswordResetTokenRepository;
 import lk.ac.kelaniya.ams.identity_access_service.repository.UserRepository;
 import lk.ac.kelaniya.ams.identity_access_service.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import lk.ac.kelaniya.ams.identity_access_service.entity.AuditEventType;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -51,6 +58,12 @@ class AuthServiceTest {
 
     @Mock
     private JwtService jwtService;
+
+    @Mock
+    private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private AuthService authService;
@@ -107,20 +120,22 @@ class AuthServiceTest {
         assertThat(savedUser.getAccountStatus()).isEqualTo(AccountStatus.PENDING_VERIFICATION);
         assertThat(savedUser.getRequestedRole()).isEqualTo("OWNER");
         assertThat(savedUser.getFailedAttemptCount()).isZero();
+        verify(auditService).record(
+                AuditEventType.USER_REGISTERED,
+                expectedId,
+                null,
+                null,
+                "PENDING_VERIFICATION",
+                "User self-registration"
+        );
     }
 
     @ParameterizedTest
     @ValueSource(strings = {
-            "SYSTEM_ADMINISTRATOR",
-            "APARTMENT_MANAGER",
             "OWNER",
-            "TENANT_RESIDENT",
-            "FINANCE_OFFICER",
-            "MAINTENANCE_COORDINATOR",
-            "TECHNICIAN",
-            "SECURITY_OFFICER"
+            "TENANT_RESIDENT"
     })
-    @DisplayName("register: each valid requested role persists correctly and grants ZERO roles (critical security regression test)")
+    @DisplayName("register: each valid resident-facing requested role (OWNER, TENANT_RESIDENT) persists correctly and grants ZERO roles")
     void testRegister_eachValidRole_persistsRequestedRole_andGrantsZeroRoles(String roleName) {
         RegisterRequest request = RegisterRequest.builder()
                 .firstName("Bob")
@@ -218,6 +233,14 @@ class AuthServiceTest {
         assertThat(response.getUser().getUserId()).isEqualTo(userId);
         assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
         assertThat(response.getUser().getRoles()).containsExactly("RESIDENT");
+        verify(auditService).record(
+                AuditEventType.LOGIN_SUCCESS,
+                userId,
+                userId,
+                null,
+                null,
+                null
+        );
     }
 
     @Test
@@ -251,6 +274,14 @@ class AuthServiceTest {
                 .isInstanceOf(InvalidCredentialsException.class)
                 .hasMessage("Invalid email or password.");
 
+        verify(auditService).record(
+                AuditEventType.LOGIN_FAILED,
+                userId,
+                null,
+                null,
+                null,
+                "Invalid credentials. Attempt 1 of 5"
+        );
         verify(jwtService, never()).generateToken(any(), any(), any());
     }
 
@@ -388,6 +419,23 @@ class AuthServiceTest {
         assertThat(savedUser.getLockedUntil()).isNotNull();
         assertThat(savedUser.getLockedUntil()).isAfter(before);
         assertThat(savedUser.isAccountLocked()).isTrue();
+
+        verify(auditService).record(
+                AuditEventType.ACCOUNT_LOCKED,
+                userId,
+                null,
+                null,
+                "LOCKED",
+                "Max failed authentication attempts reached"
+        );
+        verify(auditService).record(
+                AuditEventType.LOGIN_FAILED,
+                userId,
+                null,
+                null,
+                null,
+                "Invalid credentials - account locked"
+        );
     }
 
     @Test
@@ -644,4 +692,348 @@ class AuthServiceTest {
         assertThat(response.getAccessToken()).isEqualTo("mock.jwt.token");
         assertThat(response.getUser().getEmail()).isEqualTo("alice.smith@example.com");
     }
+
+    @Test
+    @DisplayName("login: admin-created ACTIVE account logs in immediately with mustChangePassword=true and zero roles")
+    void testLogin_adminCreatedAccount_immediatelyLogsInWithMustChangePasswordTrueAndNoRoles() {
+        UUID userId = UUID.randomUUID();
+        User adminCreatedUser = User.builder()
+                .id(userId)
+                .email("created.by.admin@ams.lk")
+                .passwordHash("$2a$10$temporaryBCryptHash")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .requestedRole(null)
+                .failedAttemptCount(0)
+                .build();
+
+        LoginRequest loginRequest = LoginRequest.builder()
+                .email("created.by.admin@ams.lk")
+                .password("TempSecret123")
+                .build();
+
+        given(userRepository.findByEmail("created.by.admin@ams.lk")).willReturn(Optional.of(adminCreatedUser));
+        given(passwordEncoder.matches("TempSecret123", "$2a$10$temporaryBCryptHash")).willReturn(true);
+        given(jwtService.generateToken(eq(userId), eq("created.by.admin@ams.lk"), eq(List.of()))).willReturn("jwt.admin.created.user");
+        given(jwtService.getExpirationSeconds()).willReturn(1800L);
+
+        LoginResponse response = authService.login(loginRequest);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getAccessToken()).isEqualTo("jwt.admin.created.user");
+        assertThat(response.isMustChangePassword()).isTrue();
+        assertThat(response.getUser()).isNotNull();
+        assertThat(response.getUser().getUserId()).isEqualTo(userId);
+        assertThat(response.getUser().getEmail()).isEqualTo("created.by.admin@ams.lk");
+        assertThat(response.getUser().isMustChangePassword()).isTrue();
+        assertThat(response.getUser().getRoles()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("forgotPassword: existing ACTIVE user creates token hash and returns generic message")
+    void testForgotPassword_existingActiveUser_success() {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .email("alice.smith@example.com")
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("Alice.Smith@Example.COM")
+                .build();
+
+        MessageResponse response = authService.forgotPassword(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getMessage()).isEqualTo(AuthService.FORGOT_PASSWORD_GENERIC_MESSAGE);
+
+        // Verify previous active tokens invalidated
+        verify(passwordResetTokenRepository).invalidateAllActiveTokensForUser(eq(user), any(Instant.class));
+
+        // Verify token entity was saved
+        ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(passwordResetTokenRepository).save(tokenCaptor.capture());
+        PasswordResetToken savedToken = tokenCaptor.getValue();
+
+        assertThat(savedToken).isNotNull();
+        assertThat(savedToken.getUser()).isEqualTo(user);
+        assertThat(savedToken.getTokenHash()).isNotBlank();
+        // SHA-256 hex string length is 64
+        assertThat(savedToken.getTokenHash()).hasSize(64);
+        assertThat(savedToken.getExpiresAt()).isAfter(Instant.now().plus(Duration.ofMinutes(28)));
+        assertThat(savedToken.getExpiresAt()).isBefore(Instant.now().plus(Duration.ofMinutes(32)));
+        assertThat(savedToken.getUsedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("forgotPassword: nonexistent email returns identical generic message and saves no token")
+    void testForgotPassword_nonexistentEmail_returnsGenericMessage() {
+        given(userRepository.findByEmail("nonexistent@example.com")).willReturn(Optional.empty());
+
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("nonexistent@example.com")
+                .build();
+
+        MessageResponse response = authService.forgotPassword(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getMessage()).isEqualTo(AuthService.FORGOT_PASSWORD_GENERIC_MESSAGE);
+
+        verify(passwordResetTokenRepository, never()).save(any());
+        verify(passwordResetTokenRepository, never()).invalidateAllActiveTokensForUser(any(), any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"REJECTED", "DEACTIVATED", "SUSPENDED", "PENDING_VERIFICATION"})
+    @DisplayName("forgotPassword: non-ACTIVE accounts return identical generic message and save no token")
+    void testForgotPassword_nonActiveAccount_returnsGenericMessageWithoutSavingToken(String statusName) {
+        AccountStatus status = AccountStatus.valueOf(statusName);
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .email("inactive@example.com")
+                .accountStatus(status)
+                .build();
+
+        given(userRepository.findByEmail("inactive@example.com")).willReturn(Optional.of(user));
+
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("inactive@example.com")
+                .build();
+
+        MessageResponse response = authService.forgotPassword(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getMessage()).isEqualTo(AuthService.FORGOT_PASSWORD_GENERIC_MESSAGE);
+
+        verify(passwordResetTokenRepository, never()).save(any());
+        verify(passwordResetTokenRepository, never()).invalidateAllActiveTokensForUser(any(), any());
+    }
+
+    @Test
+    @DisplayName("forgotPassword: requesting twice triggers invalidation of previous active tokens")
+    void testForgotPassword_calledTwice_invalidatesFirstToken() {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .email("alice.smith@example.com")
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        given(userRepository.findByEmail("alice.smith@example.com")).willReturn(Optional.of(user));
+
+        ForgotPasswordRequest request = ForgotPasswordRequest.builder()
+                .email("alice.smith@example.com")
+                .build();
+
+        authService.forgotPassword(request);
+        authService.forgotPassword(request);
+
+        // Verify invalidation was invoked on both calls
+        verify(passwordResetTokenRepository, org.mockito.Mockito.times(2))
+                .invalidateAllActiveTokensForUser(eq(user), any(Instant.class));
+        verify(passwordResetTokenRepository, org.mockito.Mockito.times(2))
+                .save(any(PasswordResetToken.class));
+    }
+
+    @Test
+    @DisplayName("resetPassword: valid token resets password hash, clears mustChangePassword and lockout")
+    void testResetPassword_success() {
+        UUID userId = UUID.randomUUID();
+        User user = User.builder()
+                .id(userId)
+                .email("alice.smith@example.com")
+                .passwordHash("$2a$10$oldPasswordHash")
+                .accountStatus(AccountStatus.ACTIVE)
+                .mustChangePassword(true)
+                .failedAttemptCount(4)
+                .lockedUntil(Instant.now().plus(Duration.ofMinutes(10)))
+                .build();
+
+        PasswordResetToken resetToken = PasswordResetToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .tokenHash("sampleHash")
+                .expiresAt(Instant.now().plus(Duration.ofMinutes(25)))
+                .usedAt(null)
+                .build();
+
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.of(resetToken));
+        given(passwordEncoder.encode("BrandNewPassword123")).willReturn("$2a$10$brandNewBCryptHash");
+
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("raw-token-value")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("BrandNewPassword123")
+                .build();
+
+        MessageResponse response = authService.resetPassword(request);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getMessage()).isEqualTo(AuthService.RESET_PASSWORD_SUCCESS_MESSAGE);
+
+        // Verify user state changes
+        assertThat(user.getPasswordHash()).isEqualTo("$2a$10$brandNewBCryptHash");
+        assertThat(user.isMustChangePassword()).isFalse();
+        assertThat(user.getFailedAttemptCount()).isZero();
+        assertThat(user.getLockedUntil()).isNull();
+        verify(userRepository).save(user);
+
+        // Verify token marked used and other tokens invalidated
+        assertThat(resetToken.getUsedAt()).isNotNull();
+        verify(passwordResetTokenRepository).save(resetToken);
+        verify(passwordResetTokenRepository).invalidateAllActiveTokensForUser(eq(user), any(Instant.class));
+        verify(auditService).record(
+                AuditEventType.PASSWORD_RESET,
+                user.getId(),
+                null,
+                null,
+                null,
+                "Password reset completed via token"
+        );
+    }
+
+    @Test
+    @DisplayName("resetPassword: token not found throws generic InvalidResetTokenException")
+    void testResetPassword_tokenNotFound_throwsGenericException() {
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.empty());
+
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("nonexistent-token")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("BrandNewPassword123")
+                .build();
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage(AuthService.GENERIC_INVALID_RESET_TOKEN_MESSAGE);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("resetPassword: expired token throws generic InvalidResetTokenException")
+    void testResetPassword_expiredToken_throwsGenericException() {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        PasswordResetToken expiredToken = PasswordResetToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .tokenHash("expiredHash")
+                .expiresAt(Instant.now().minus(Duration.ofMinutes(5))) // Expired 5 min ago
+                .usedAt(null)
+                .build();
+
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.of(expiredToken));
+
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("expired-token")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("BrandNewPassword123")
+                .build();
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage(AuthService.GENERIC_INVALID_RESET_TOKEN_MESSAGE);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("resetPassword: already used token throws generic InvalidResetTokenException")
+    void testResetPassword_alreadyUsedToken_throwsGenericException() {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        PasswordResetToken usedToken = PasswordResetToken.builder()
+                .id(UUID.randomUUID())
+                .user(user)
+                .tokenHash("usedHash")
+                .expiresAt(Instant.now().plus(Duration.ofMinutes(20)))
+                .usedAt(Instant.now().minus(Duration.ofMinutes(2))) // Already used 2 min ago
+                .build();
+
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.of(usedToken));
+
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("already-used-token")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("BrandNewPassword123")
+                .build();
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage(AuthService.GENERIC_INVALID_RESET_TOKEN_MESSAGE);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("resetPassword: password mismatch throws PasswordMismatchException")
+    void testResetPassword_passwordMismatch_throwsPasswordMismatchException() {
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("any-token")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("DifferentPassword456")
+                .build();
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(PasswordMismatchException.class)
+                .hasMessage("New password and confirm password do not match");
+
+        verify(passwordResetTokenRepository, never()).findByTokenHash(any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("resetPassword: confirms expired, used, and invalid cases produce identical exception messages")
+    void testResetPassword_confirmAllThreeRejectionMessagesAreIndistinguishable() {
+        User user = User.builder()
+                .id(UUID.randomUUID())
+                .accountStatus(AccountStatus.ACTIVE)
+                .build();
+
+        // 1. Not found case
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.empty());
+
+        ResetPasswordRequest request = ResetPasswordRequest.builder()
+                .resetToken("garbage")
+                .newPassword("BrandNewPassword123")
+                .confirmNewPassword("BrandNewPassword123")
+                .build();
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage("Invalid or expired password reset token.");
+
+        // 2. Expired case
+        PasswordResetToken expiredToken = PasswordResetToken.builder()
+                .user(user)
+                .expiresAt(Instant.now().minusSeconds(60))
+                .usedAt(null)
+                .build();
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.of(expiredToken));
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage("Invalid or expired password reset token.");
+
+        // 3. Already used case
+        PasswordResetToken usedToken = PasswordResetToken.builder()
+                .user(user)
+                .expiresAt(Instant.now().plusSeconds(600))
+                .usedAt(Instant.now().minusSeconds(60))
+                .build();
+        given(passwordResetTokenRepository.findByTokenHash(any(String.class))).willReturn(Optional.of(usedToken));
+
+        assertThatThrownBy(() -> authService.resetPassword(request))
+                .isInstanceOf(InvalidResetTokenException.class)
+                .hasMessage("Invalid or expired password reset token.");
+    }
 }
+
