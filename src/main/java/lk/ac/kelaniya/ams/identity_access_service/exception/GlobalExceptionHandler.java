@@ -45,6 +45,22 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("PASSWORD_MISMATCH", ex.getMessage()));
     }
 
+    @ExceptionHandler(SamePasswordException.class)
+    public ResponseEntity<ErrorResponse> handleSamePasswordException(SamePasswordException ex) {
+        log.warn("Password change rejected - same password: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("SAME_PASSWORD", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidResetTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidResetTokenException(InvalidResetTokenException ex) {
+        log.warn("Password reset rejected: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_RESET_TOKEN", ex.getMessage()));
+    }
+
     @ExceptionHandler(DuplicateEmailException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateEmailException(DuplicateEmailException ex) {
         log.warn("Email conflict: {}", ex.getMessage());
@@ -79,6 +95,30 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.UNAUTHORIZED)
                 .body(ErrorResponse.of("INVALID_CREDENTIALS", ex.getMessage()));
+    }
+
+    @ExceptionHandler(UntrustedServiceException.class)
+    public ResponseEntity<ErrorResponse> handleUntrustedServiceException(UntrustedServiceException ex) {
+        log.warn("Untrusted service rejection: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
+    }
+
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthenticationException(org.springframework.security.core.AuthenticationException ex) {
+        log.warn("Authentication failed: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
+    }
+
+    @ExceptionHandler(io.jsonwebtoken.JwtException.class)
+    public ResponseEntity<ErrorResponse> handleJwtException(io.jsonwebtoken.JwtException ex) {
+        log.warn("JWT validation failed: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ErrorResponse.of("UNAUTHORIZED", "Authentication required"));
     }
 
     @ExceptionHandler(AccountStatusException.class)
@@ -127,6 +167,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("INVALID_STATUS_TRANSITION", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidRoleException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRoleException(InvalidRoleException ex) {
+        log.warn("Invalid role specified: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("INVALID_ROLE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleAlreadyAssignedException.class)
+    public ResponseEntity<ErrorResponse> handleRoleAlreadyAssignedException(RoleAlreadyAssignedException ex) {
+        log.warn("Role assignment conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("ROLE_ALREADY_ASSIGNED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleNotAssignedException.class)
+    public ResponseEntity<ErrorResponse> handleRoleNotAssignedException(RoleNotAssignedException ex) {
+        log.warn("Role removal conflict: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("ROLE_NOT_ASSIGNED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SelfRoleAssignmentException.class)
+    public ResponseEntity<ErrorResponse> handleSelfRoleAssignmentException(SelfRoleAssignmentException ex) {
+        log.warn("Self role assignment blocked: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("FORBIDDEN", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

@@ -15,19 +15,44 @@ import org.springframework.context.annotation.Configuration;
 public class RsaKeyProperties {
 
     /**
-     * Path to the RSA private key in PKCS#8 PEM format (e.g. classpath:certs/private_key.pem or file:certs/private_key.pem).
+     * Path to the RSA private key in PKCS#8 PEM format (e.g. file:certs/private_key.pem or /secrets/private_key.pem).
      */
     private String privateKeyPath;
 
     /**
-     * Path to the RSA public key in X.509 PEM format (e.g. classpath:certs/public_key.pem or file:certs/public_key.pem).
+     * Path to the RSA public key in X.509 PEM format (e.g. file:certs/public_key.pem or /secrets/public_key.pem).
      */
     private String publicKeyPath;
+
+    /**
+     * Path to the Gateway public key in X.509 PEM format for verifying incoming Bearer tokens (e.g. file:certs/gateway_public_key.pem).
+     */
+    private String gatewayPublicKeyPath;
+
+    /**
+     * Optional inline PEM string for Gateway public key.
+     */
+    private String gatewayPublicKey;
+
+    /**
+     * Path to the RSA private key in PKCS#8 PEM format for signing outbound Service JWTs (e.g. file:certs/service_private_key.pem).
+     */
+    private String servicePrivateKeyPath;
+
+    /**
+     * Optional inline PEM string for Service private key.
+     */
+    private String servicePrivateKey;
 
     /**
      * Expiration time in seconds for issued JWTs (default: 1800 / 30 minutes).
      */
     private long expirationSeconds = 1800;
+
+    /**
+     * Expiration time in seconds for issued service-to-service JWTs (default: 300 / 5 minutes).
+     */
+    private long serviceTokenExpirationSeconds = 300;
 
     /**
      * Key ID (kid) associated with the RSA key pair for JWKS and JWT headers.

@@ -3,11 +3,14 @@ package lk.ac.kelaniya.ams.identity_access_service.repository.specification;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
 import lk.ac.kelaniya.ams.identity_access_service.entity.AccountStatus;
+import lk.ac.kelaniya.ams.identity_access_service.entity.Role;
 import lk.ac.kelaniya.ams.identity_access_service.entity.User;
+import lk.ac.kelaniya.ams.identity_access_service.entity.UserRole;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -98,5 +101,36 @@ class UserSpecificationsTest {
         verify(cb).equal(statusPath, AccountStatus.PENDING_VERIFICATION);
         verify(cb).equal(upperExpr, "OWNER");
         verify(cb).and(any(Predicate[].class));
+    }
+
+    @Test
+    @DisplayName("withFilters with assigned role joins userRoles and role and filters by role name")
+    void testWithFilters_withAssignedRole_buildsRolePredicate() {
+        @SuppressWarnings("unchecked")
+        Join<User, UserRole> userRolesJoin = (Join<User, UserRole>) mock(Join.class);
+        @SuppressWarnings("unchecked")
+        Join<UserRole, Role> roleJoin = (Join<UserRole, Role>) mock(Join.class);
+        @SuppressWarnings("unchecked")
+        Path<Object> roleNamePath = (Path<Object>) mock(Path.class);
+        @SuppressWarnings("unchecked")
+        Expression<String> upperExpr = (Expression<String>) mock(Expression.class);
+        Predicate rolePredicate = mock(Predicate.class);
+        Predicate andPredicate = mock(Predicate.class);
+
+        given(root.<User, UserRole>join("userRoles")).willReturn(userRolesJoin);
+        given(userRolesJoin.<UserRole, Role>join("role")).willReturn(roleJoin);
+        given(roleJoin.get("name")).willReturn(roleNamePath);
+        given(cb.upper(any())).willReturn(upperExpr);
+        given(cb.equal(upperExpr, "SYSTEM_ADMINISTRATOR")).willReturn(rolePredicate);
+        given(cb.and(any(Predicate[].class))).willReturn(andPredicate);
+
+        Specification<User> spec = UserSpecifications.withFilters(null, null, null, "SYSTEM_ADMINISTRATOR");
+        Predicate result = spec.toPredicate(root, query, cb);
+
+        assertThat(result).isNotNull();
+        verify(root).join("userRoles");
+        verify(userRolesJoin).join("role");
+        verify(cb).equal(upperExpr, "SYSTEM_ADMINISTRATOR");
+        verify(query).distinct(true);
     }
 }

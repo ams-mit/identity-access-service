@@ -3,7 +3,21 @@ spring:
     url: ${DB_URL:jdbc:mysql://localhost:3306/identity_db}
     username: ${DB_USERNAME:identity_user}
     password: ${DB_PASSWORD:identity_pass}
+  mail:
+    host: ${SMTP_HOST:smtp.gmail.com}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:${SMTP_APP_PASSWORD:}}
 jwt:
-  private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:certs/private_key.pem}
-  public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:certs/public_key.pem}
-  expiration-seconds: 3600
+  private-key-path: ${JWT_PRIVATE_KEY_PATH:file:certs/private_key.pem}
+  public-key-path: ${JWT_PUBLIC_KEY_PATH:file:certs/public_key.pem}
+  gateway-public-key-path: ${GATEWAY_JWT_PUBLIC_KEY_PATH:${GATEWAY_JWT_PUBLIC_KEY:file:certs/gateway_public_key.pem}}
+  gateway-public-key: ${GATEWAY_JWT_PUBLIC_KEY:}
+  service-private-key-path: ${SERVICE_JWT_PRIVATE_KEY_PATH:${SERVICE_JWT_PRIVATE_KEY:file:certs/service_private_key.pem}}
+  service-private-key: ${SERVICE_JWT_PRIVATE_KEY:}
+  expiration-seconds: 1800
+  service-token-expiration-seconds: ${JWT_SERVICE_TOKEN_EXPIRATION_SECONDS:300}
+auth:
+  password-reset:
+    token-validity-minutes: 30
+
