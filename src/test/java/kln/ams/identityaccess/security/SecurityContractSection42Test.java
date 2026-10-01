@@ -231,4 +231,79 @@ class SecurityContractSection42Test {
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"));
     }
+
+    @Test
+    void testUnauthenticatedOnRoleEndpoints_Returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/roles"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testNonAdminOnRoleEndpoints_Returns403() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String nonAdminUserToken = createUserToken(
+                userId,
+                List.of("TENANT_RESIDENT"),
+                gatewayKeyPair,
+                Instant.now().plus(30, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(get("/api/v1/roles")
+                        .header("Authorization", "Bearer " + nonAdminUserToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    void testUnauthenticatedOnPermissionEndpoints_Returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/permissions"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testNonAdminOnPermissionEndpoints_Returns403() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String nonAdminUserToken = createUserToken(
+                userId,
+                List.of("TENANT_RESIDENT"),
+                gatewayKeyPair,
+                Instant.now().plus(30, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(get("/api/v1/permissions")
+                        .header("Authorization", "Bearer " + nonAdminUserToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    void testUnauthenticatedOnAuthMe_Returns401() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testNonAdminUserOnAuthMe_AllowedThroughSecurity() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String nonAdminUserToken = createUserToken(
+                userId,
+                List.of("TENANT_RESIDENT"),
+                gatewayKeyPair,
+                Instant.now().plus(30, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(get("/api/v1/auth/me")
+                        .header("Authorization", "Bearer " + nonAdminUserToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+    }
 }
