@@ -25,8 +25,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.http.MediaType;
+
 import static org.mockito.Answers.RETURNS_DEEP_STUBS;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -305,5 +309,100 @@ class SecurityContractSection42Test {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+    }
+
+    @Test
+    void testUnauthenticatedOnLogout_Returns401() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/logout"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testServiceTokenOnLogout_Returns401() throws Exception {
+        String validServiceToken = createServiceToken(
+                "resident-management-service",
+                gatewayKeyPair,
+                Instant.now().plus(5, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("Authorization", "Bearer " + validServiceToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testValidUserTokenOnLogout_AllowedThroughSecurity() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String validUserToken = createUserToken(
+                userId,
+                List.of("TENANT_RESIDENT"),
+                gatewayKeyPair,
+                Instant.now().plus(30, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .header("Authorization", "Bearer " + validUserToken))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void testUnauthenticatedOnChangePassword_Returns401() throws Exception {
+        mockMvc.perform(put("/api/v1/auth/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Old1\",\"newPassword\":\"NewPass123\",\"confirmNewPassword\":\"NewPass123\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testServiceTokenOnChangePassword_Returns401() throws Exception {
+        String validServiceToken = createServiceToken(
+                "billing-payment-service",
+                gatewayKeyPair,
+                Instant.now().plus(5, ChronoUnit.MINUTES)
+        );
+
+        mockMvc.perform(put("/api/v1/auth/me/password")
+                        .header("Authorization", "Bearer " + validServiceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"currentPassword\":\"Old1\",\"newPassword\":\"NewPass123\",\"confirmNewPassword\":\"NewPass123\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("INVALID_TOKEN"));
+    }
+
+    @Test
+    void testRegisterEndpoint_IsPublic() throws Exception {
+        // Without Authorization header, requests reach validation (returns 400 on empty body, NOT 401)
+        mockMvc.perform(post("/api/v1/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void testForgotPasswordEndpoint_IsPublic() throws Exception {
+        // Without Authorization header, requests reach validation (returns 400 on empty body, NOT 401)
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void testResetPasswordEndpoint_IsPublic() throws Exception {
+        // Without Authorization header, requests reach validation (returns 400 on empty body, NOT 401)
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
     }
 }
