@@ -49,6 +49,14 @@ public class GlobalExceptionHandler {
                 .body(ApiErrorResponse.of("VALIDATION_ERROR", "Malformed JSON request body"));
     }
 
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodNotSupportedException(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        log.warn("HTTP method not supported: {}", ex.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ApiErrorResponse.of("METHOD_NOT_ALLOWED", ex.getMessage()));
+    }
+
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ApiErrorResponse> handleApiException(ApiException ex) {
         log.warn("API exception [{}]: {}", ex.getCode(), ex.getMessage());

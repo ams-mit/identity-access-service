@@ -87,21 +87,52 @@ class UserControllerTest {
 
     @Test
     void listUsers_Success() throws Exception {
-        PagedData<UserResponse> pagedData = PagedData.<UserResponse>builder()
-                .items(List.of(testUserResponse))
-                .page(0)
-                .size(20)
-                .totalElements(1)
-                .totalPages(1)
-                .build();
+        org.springframework.data.domain.Page<UserResponse> page = new org.springframework.data.domain.PageImpl<>(
+                List.of(testUserResponse),
+                org.springframework.data.domain.PageRequest.of(0, 20),
+                1
+        );
 
-        when(userService.getUsers(anyInt(), anyInt(), any(), any(), any())).thenReturn(pagedData);
+        when(userService.getUsersPage(anyInt(), anyInt(), any(), any(), any())).thenReturn(page);
 
         mockMvc.perform(get("/api/v1/users"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.items[0].username").value("john@example.com"))
-                .andExpect(jsonPath("$.data.totalElements").value(1));
+                .andExpect(jsonPath("$.message").value("Users retrieved successfully"))
+                .andExpect(jsonPath("$.data[0].username").value("john@example.com"))
+                .andExpect(jsonPath("$.pagination.page").value(0))
+                .andExpect(jsonPath("$.pagination.size").value(20))
+                .andExpect(jsonPath("$.pagination.totalElements").value(1))
+                .andExpect(jsonPath("$.pagination.totalPages").value(1))
+                .andExpect(jsonPath("$.pagination.hasNext").value(false))
+                .andExpect(jsonPath("$.pagination.hasPrevious").value(false))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void listUsers_SizeGreaterThan100_Returns400ValidationError() throws Exception {
+        mockMvc.perform(get("/api/v1/users?size=101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details[0].field").value("size"))
+                .andExpect(jsonPath("$.error.details[0].message").value("Page size must not exceed 100"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void userGroupEnvelope_AssertStandardFields() throws Exception {
+        when(userService.getUser(userId)).thenReturn(testUserResponse);
+
+        mockMvc.perform(get("/api/v1/users/" + userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.timestamp").isString())
+                .andExpect(jsonPath("$.requestId").isString());
     }
 
     @Test

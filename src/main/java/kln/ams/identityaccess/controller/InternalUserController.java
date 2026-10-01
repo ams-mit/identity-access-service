@@ -39,7 +39,8 @@ public class InternalUserController {
     private final InternalCallerAuthorizationService callerAuthorizationService;
 
     @Operation(
-            summary = "Validate user existence, account status, and roles",
+            operationId = "IAM-INT-001",
+            summary = "IAM-INT-001: Validate user existence, account status, and roles",
             description = "IAM-INT-001: Validates that a user identity exists and is eligible for cross-service operations. Authorized backend services only."
     )
     @ApiResponses({
@@ -67,7 +68,8 @@ public class InternalUserController {
     }
 
     @Operation(
-            summary = "Validate current account status",
+            operationId = "IAM-INT-002",
+            summary = "IAM-INT-002: Validate current account status",
             description = "IAM-INT-002: Obtain authoritative current user account status for cross-service authorization. Authorized backend services only."
     )
     @ApiResponses({

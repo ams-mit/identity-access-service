@@ -27,4 +27,7 @@ public class UserValidationResponse {
 
     @Schema(description = "Assigned canonical roles", example = "[\"TENANT_RESIDENT\"]")
     private List<String> roles;
+
+    @Schema(description = "Indicates whether the requested role matches user roles", example = "true")
+    private Boolean roleMatches;
 }

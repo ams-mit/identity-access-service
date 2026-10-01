@@ -52,7 +52,7 @@ class InternalUserServiceTest {
     }
 
     @Test
-    void validateUser_Success_WithoutRequiredRole() {
+    void iamInt001_validateUser_Success_WithoutRequiredRole() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         UserValidationResponse response = internalUserService.validateUser(userId, null);
@@ -61,25 +61,28 @@ class InternalUserServiceTest {
         assertThat(response.isExists()).isTrue();
         assertThat(response.isActive()).isTrue();
         assertThat(response.getRoles()).contains("TENANT_RESIDENT");
+        assertThat(response.getRoleMatches()).isNull();
     }
 
     @Test
-    void validateUser_Success_WithMatchingRole() {
+    void iamInt001_validateUser_Success_WithMatchingRole() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         UserValidationResponse response = internalUserService.validateUser(userId, "TENANT_RESIDENT");
 
         assertThat(response.isActive()).isTrue();
+        assertThat(response.getRoleMatches()).isTrue();
     }
 
     @Test
-    void validateUser_RoleMismatch_ActiveIsFalse() {
+    void iamInt001_validateUser_RoleMismatch_ActiveIsFalse() {
         when(userRepository.findById(userId)).thenReturn(Optional.of(testUser));
 
         UserValidationResponse response = internalUserService.validateUser(userId, "OWNER");
 
         assertThat(response.isExists()).isTrue();
         assertThat(response.isActive()).isFalse();
+        assertThat(response.getRoleMatches()).isFalse();
     }
 
     @Test
