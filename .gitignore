@@ -51,3 +51,6 @@ certs/
 **/certs/
 src/main/resources/certs/
 
+### Shared Project Contracts ###
+PROJECT-A-*.md
+
