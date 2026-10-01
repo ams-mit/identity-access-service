@@ -18,4 +18,11 @@ public class UpdateStatusRequest {
     @NotNull(message = "Account status is required")
     @Schema(description = "Target account status (ACTIVE, INACTIVE, SUSPENDED)", example = "ACTIVE")
     private AccountStatus status;
+
+    @Schema(description = "Optional audit reason for status transition", example = "Administrative activation upon identity verification")
+    private String reason;
+
+    public UpdateStatusRequest(AccountStatus status) {
+        this.status = status;
+    }
 }

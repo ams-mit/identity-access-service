@@ -55,6 +55,13 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     @Transactional(readOnly = true)
+    public Page<UserResponse> getUsersPage(int page, int size, AccountStatus status, String role, String search) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<User> userPage = userRepository.findUsersFiltered(status, role, search, pageable);
+        return userPage.map(this::toUserResponse);
+    }
+
+    @Transactional(readOnly = true)
     public PagedData<UserResponse> getUsers(int page, int size, AccountStatus status, String role, String search) {
         int boundedPage = Math.max(0, page);
         int boundedSize = Math.min(Math.max(1, size), 100);
@@ -156,7 +163,7 @@ public class UserService {
         AccountStatus targetStatus = request.getStatus();
         user.setAccountStatus(targetStatus);
         User savedUser = userRepository.save(user);
-        log.info("Updated account status for user id {} to {}", userId, targetStatus);
+        log.info("Updated account status for user id {} to {} (reason: {})", userId, targetStatus, request.getReason());
         return toUserResponse(savedUser);
     }
 
