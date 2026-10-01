@@ -88,7 +88,7 @@ public class RoleController {
             @ApiResponse(responseCode = "403", description = "Forbidden", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Role not found", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
-    @PatchMapping("/{roleId}")
+    @RequestMapping(value = "/{roleId}", method = {org.springframework.web.bind.annotation.RequestMethod.PATCH, org.springframework.web.bind.annotation.RequestMethod.PUT})
     public ResponseEntity<kln.ams.identityaccess.dto.response.ApiResponse<RoleResponse>> updateRole(
             @Parameter(description = "Role UUID") @PathVariable UUID roleId,
             @Valid @RequestBody UpdateRoleRequest request) {

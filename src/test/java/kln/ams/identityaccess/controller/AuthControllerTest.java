@@ -108,7 +108,7 @@ class AuthControllerTest {
     }
 
     @Test
-    void login_ValidationFailure_Returns400() throws Exception {
+    void login_ValidationFailure_Returns400WithDetailsList() throws Exception {
         LoginRequest request = new LoginRequest("", "");
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -116,7 +116,32 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+                .andExpect(jsonPath("$.message").value("Validation failed"))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details").isArray())
+                .andExpect(jsonPath("$.error.details[0].field").exists())
+                .andExpect(jsonPath("$.error.details[0].message").exists())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void authGroupEnvelope_AssertStandardFields() throws Exception {
+        LoginRequest request = new LoginRequest("john@example.com", "Password123!");
+        LoginUserDto userDto = new LoginUserDto(userId, "john@example.com", List.of("TENANT_RESIDENT"), "ACTIVE");
+        LoginResponse response = new LoginResponse("mock_token", "Bearer", 1800, userDto);
+
+        when(authService.login(any(LoginRequest.class))).thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Login successful"))
+                .andExpect(jsonPath("$.data").isMap())
+                .andExpect(jsonPath("$.timestamp").isString())
+                .andExpect(jsonPath("$.requestId").isString());
     }
 
     @Test
