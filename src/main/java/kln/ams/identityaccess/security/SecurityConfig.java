@@ -48,6 +48,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Public endpoints
                 .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/register").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/forgot-password").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/reset-password").permitAll()
                 .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
 
@@ -59,8 +62,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/roles", "/api/v1/roles/**").hasAuthority("ROLE_SYSTEM_ADMINISTRATOR")
                 .requestMatchers("/api/v1/permissions", "/api/v1/permissions/**").hasAuthority("ROLE_SYSTEM_ADMINISTRATOR")
 
-                // Authenticated user endpoint
+                // Authenticated user endpoints
                 .requestMatchers(HttpMethod.GET, "/api/v1/auth/me").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/logout").authenticated()
+                .requestMatchers(HttpMethod.PUT, "/api/v1/auth/me/password").authenticated()
 
                 .anyRequest().authenticated()
             )

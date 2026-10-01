@@ -11,4 +11,8 @@ public class InvalidCredentialsException extends ApiException {
     public InvalidCredentialsException(String message) {
         super("INVALID_CREDENTIALS", message, HttpStatus.UNAUTHORIZED);
     }
+
+    public InvalidCredentialsException(String message, HttpStatus status) {
+        super("INVALID_CREDENTIALS", message, status);
+    }
 }
