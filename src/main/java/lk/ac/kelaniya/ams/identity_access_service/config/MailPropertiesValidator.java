@@ -7,9 +7,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 /**
- * Validates required SMTP mail configuration at application startup.
- * Fails fast with an IllegalStateException if required credentials are not configured,
- * following the same fail-fast design pattern as RsaKeyProvider.
+ * Validates SMTP mail configuration when SMTP is enabled.
+ * SMTP can be disabled for environments where email functionality
+ * is not required.
  */
 @Slf4j
 @Component
@@ -28,6 +28,9 @@ public class MailPropertiesValidator {
     @Value("${spring.mail.port:587}")
     private int port;
 
+    @Value("${SMTP_ENABLED:true}")
+    private boolean smtpEnabled;
+
     public MailPropertiesValidator() {
     }
 
@@ -40,14 +43,25 @@ public class MailPropertiesValidator {
 
     @PostConstruct
     public void validate() {
+        if (!smtpEnabled) {
+            log.info("SMTP email functionality is disabled.");
+            return;
+        }
+
         if (username == null || username.isBlank()) {
             throw new IllegalStateException(
                     "SMTP username is not configured. Please set 'spring.mail.username' or environment variable SMTP_USERNAME.");
         }
+
         if (password == null || password.isBlank()) {
             throw new IllegalStateException(
                     "SMTP password is not configured. Please set 'spring.mail.password' or environment variable SMTP_PASSWORD or SMTP_APP_PASSWORD.");
         }
-        log.info("SMTP configuration successfully validated at startup: host={}, port={}", host, port);
+
+        log.info(
+                "SMTP configuration successfully validated at startup: host={}, port={}",
+                host,
+                port
+        );
     }
 }
