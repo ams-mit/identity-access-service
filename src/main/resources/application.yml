@@ -50,7 +50,11 @@ internal-api:
       - resident-management-service
 auth:
   password-reset:
-    token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:30}
+    token-validity-minutes: ${PASSWORD_RESET_TOKEN_VALIDITY_MINUTES:15}
+  password-policy:
+    min-length: ${AUTH_PASSWORD_POLICY_MIN_LENGTH:8}
+    max-length: ${AUTH_PASSWORD_POLICY_MAX_LENGTH:100}
+    require-digit: ${AUTH_PASSWORD_POLICY_REQUIRE_DIGIT:true}
 management:
   health:
     mail:

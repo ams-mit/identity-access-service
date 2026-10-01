@@ -1,180 +1,146 @@
-# identity-access-service
+# Project A — Identity Access Service (`identity-access-service`)
 
-The `identity-access-service` is the core identity provider and security service for the Apartment Management System (Group 1). It is responsible for user registration, authentication, Role-Based Access Control (RBAC), RS256 JWT issuance and validation, security audit logging, and internal microservice authorization.
+**Group:** Group 1 — Apartment Identity and Resident Management  
+**Package:** `kln.ams.identityaccess`  
+**Base Path:** `/api/v1`  
+**Database:** `identity_access_db`  
+**Architecture:** Microservice architecture with Spring Boot 3.3.5 / Java 21 / REST / RS256 JWT Bearer Authentication  
 
-## Service Ownership & Scope
+---
 
-The service owns the following functional responsibilities:
-- **User Lifecycle & Verification**: Public self-registration (advisory resident-facing roles: `OWNER`, `TENANT_RESIDENT`), administrator-driven verification/approval/rejection workflows, and administrative account provisioning for staff and admin roles (`BUILDING_MANAGER`, `SECURITY_GUARD`, `SYSTEM_ADMINISTRATOR`).
-- **Authentication & Brute-Force Defense**: Credential-based authentication with bcrypt password hashing, consecutive failed login attempt tracking, and automatic temporary account lockout.
-- **Password Reset**: Cryptographically secure token-based password reset with anti-enumeration protection.
-- **Token Issuance & JWKS Distribution**: RS256 asymmetric signing of user access tokens (with user identity and roles) and service-to-service tokens (with registered service identifiers). Public keys are exposed via `/api/v1/auth/public-key` (PEM) and `/.well-known/jwks.json` (JWKS RFC 7517) for downstream validation across platform microservices.
-- **Internal Microservice Authorization**: Secured internal user validation endpoint (`/internal/v1/users/{userId}`) restricted strictly to callers presenting valid Service JWTs.
-- **Security Audit Logging**: Append-only event trail (`audit_events`) capturing authentication successes/failures, account status changes, and role assignments, queryable and pageable by `SYSTEM_ADMINISTRATOR` users.
-- **Abuse Prevention**: In-memory sliding-window rate limiting on unauthenticated public endpoints (`/register`, `/login`, `/forgot-password`, `/reset-password`).
+## 1. Service Ownership & Boundaries
 
-## Tech Stack
+Per `PROJECT-A-CONTRACT-DECISIONS.md` and `IDENTITY-ACCESS-SERVICE.md`, `identity-access-service` is the canonical owner of:
+- **User accounts** & credential management (bcrypt hashed, never plaintext/returned)
+- **Account status** (`ACTIVE`, `INACTIVE`, `SUSPENDED`)
+- **Canonical roles** (9 roles: `SYSTEM_ADMINISTRATOR`, `APARTMENT_MANAGER`, `OWNER`, `TENANT_RESIDENT`, `FINANCE_OFFICER`, `MAINTENANCE_COORDINATOR`, `TECHNICIAN`, `SERVICE_STAFF`, `SECURITY_OFFICER`)
+- **Permissions** & role-permission mappings
+- **User-role assignments**
+- **User authentication** (`POST /api/v1/auth/login`)
+- **User JWT issuance** (RS256 asymmetric signing, 30m TTL, strictly `sub`, `type=user`, `roles`, `iat`, `exp`)
+- **Internal identity validation APIs** (`GET /api/v1/internal/users/{userId}/validate`, `GET /api/v1/internal/users/{userId}/status`)
 
-- **Framework**: Spring Boot 3.3.5
-- **Language / Runtime**: Java 21
-- **Build Tool**: Maven (with Maven Wrapper `./mvnw` / `mvnw.cmd`)
-- **Database**: MySQL 8.0
-- **Database Migrations**: Flyway
-- **Security**: Spring Security & RS256 JWT (JSON Web Tokens)
-- **API Documentation**: springdoc-openapi (Swagger UI & OpenAPI v1.0.0)
-- **Logging**: Logback with `logstash-logback-encoder` (profile-aware console / structured JSON)
+### Explicit Non-Ownership Boundaries
+The service does **not** own:
+- Resident, owner, tenant, or staff domain profiles (owned by `resident-management-service`)
+- Buildings, floors, units, unit types, or unit ownership (owned by `property-unit-service`)
+- Leases, occupants, or occupancy (owned by `lease-occupancy-service`)
+- Invoices, payments, or balances (owned by `billing-payment-service`)
+- Maintenance requests or work orders (owned by `operations-service`)
+- Notifications (solely owned by `community-service`)
 
-## API Documentation & Standards
+---
 
-- **Base URL**: `http://localhost:8080/api/v1`
-- **Swagger UI**: `http://localhost:8080/swagger-ui.html`
-- **OpenAPI v1.0 Specification**: `http://localhost:8080/v3/api-docs`
+## 2. API Contract Inventory (19 Canonical Endpoints)
 
-## Getting Started (Local Development)
+### Authentication & Account Identity
+| API ID | Method | Endpoint | Description | Access |
+|---|---|---|---|---|
+| `AUTH-001` | `POST` | `/api/v1/auth/login` | Authenticate user and issue User JWT | Public |
+| `AUTH-002` | `GET` | `/api/v1/auth/me` | Retrieve authenticated user account details | Authenticated User |
 
-### 1. Prerequisites
+### User Management
+| API ID | Method | Endpoint | Description | Access |
+|---|---|---|---|---|
+| `USR-001` | `GET` | `/api/v1/users` | List user accounts (paginated, filtered, search) | `SYSTEM_ADMINISTRATOR` |
+| `USR-002` | `POST` | `/api/v1/users` | Create user account with canonical roles | `SYSTEM_ADMINISTRATOR` |
+| `USR-003` | `GET` | `/api/v1/users/{userId}` | Get user account by UUID | `SYSTEM_ADMINISTRATOR` |
+| `USR-004` | `PATCH` | `/api/v1/users/{userId}` | Update account fields (email, names, phone) | `SYSTEM_ADMINISTRATOR` |
+| `USR-005` | `PATCH` | `/api/v1/users/{userId}/status` | Update account status (`ACTIVE`, `INACTIVE`, `SUSPENDED`) | `SYSTEM_ADMINISTRATOR` |
+| `USR-006` | `GET` | `/api/v1/users/{userId}/roles` | Get canonical roles assigned to user | `SYSTEM_ADMINISTRATOR` |
+| `USR-007` | `PUT` | `/api/v1/users/{userId}/roles` | Replace canonical roles assigned to user | `SYSTEM_ADMINISTRATOR` |
 
-- **Java 21 JDK** installed and configured (`JAVA_HOME`).
-- **Docker** installed and running (required for local MySQL database and integration test execution).
-- **Maven Wrapper** is included (`./mvnw` on Linux/macOS, `.\mvnw.cmd` on Windows) — no standalone Maven installation is required.
+### Role Management
+| API ID | Method | Endpoint | Description | Access |
+|---|---|---|---|---|
+| `ROLE-001` | `GET` | `/api/v1/roles` | List all canonical system roles | `SYSTEM_ADMINISTRATOR` |
+| `ROLE-002` | `POST` | `/api/v1/roles` | Create new role definition | `SYSTEM_ADMINISTRATOR` |
+| `ROLE-003` | `GET` | `/api/v1/roles/{roleId}` | Get role details by UUID | `SYSTEM_ADMINISTRATOR` |
+| `ROLE-004` | `PATCH` | `/api/v1/roles/{roleId}` | Update role description | `SYSTEM_ADMINISTRATOR` |
+| `ROLE-005` | `DELETE` | `/api/v1/roles/{roleId}` | Delete role (rejected if assigned to users) | `SYSTEM_ADMINISTRATOR` |
 
-### 2. Clone and Setup Environment
+### Permission Management
+| API ID | Method | Endpoint | Description | Access |
+|---|---|---|---|---|
+| `PERM-001` | `GET` | `/api/v1/permissions` | List all defined system permissions | `SYSTEM_ADMINISTRATOR` |
+| `PERM-002` | `GET` | `/api/v1/roles/{roleId}/permissions` | Get permissions assigned to a role | `SYSTEM_ADMINISTRATOR` |
+| `PERM-003` | `PUT` | `/api/v1/roles/{roleId}/permissions` | Replace permissions assigned to a role | `SYSTEM_ADMINISTRATOR` |
 
-Clone the repository and prepare the local environment file:
+### Internal Microservice Validation APIs
+| API ID | Method | Endpoint | Description | Access |
+|---|---|---|---|---|
+| `IAM-INT-001` | `GET` | `/api/v1/internal/users/{userId}/validate` | Validate user existence, active status, roles | Registered Service JWT |
+| `IAM-INT-002` | `GET` | `/api/v1/internal/users/{userId}/status` | Validate current user account status | Registered Service JWT |
 
-```bash
-git clone <repository-url>
-cd identity-access-service
-cp .env.example .env
+---
+
+## 3. Standard Response Envelopes & Error Handling
+
+All responses follow the canonical Project A API response standard:
+
+### Success Response
+```json
+{
+  "success": true,
+  "message": "Operation completed successfully",
+  "data": { ... },
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-4df2-4d8e-9c7f-4d7e5e7a4c11"
+}
 ```
 
-Verify or configure the variables in `.env`:
-- `DB_URL`: JDBC URL for MySQL (default: `jdbc:mysql://localhost:3306/identity_db`)
-- `DB_USERNAME` / `DB_PASSWORD`: MySQL database credentials (default: `identity_user` / `identity_pass`)
-- `SERVER_PORT`: Application HTTP port (default: `8080`)
-- `JWT_PRIVATE_KEY_PATH` / `JWT_PUBLIC_KEY_PATH`: RSA PEM key paths (e.g. `file:certs/private_key.pem`, `file:certs/public_key.pem`; required, no bundled fallback)
-
-### 3. Start MySQL via Docker
-
-Start the dedicated MySQL container for local development:
-
-```bash
-docker run --name identity-mysql \
-  -e MYSQL_ROOT_PASSWORD=rootpass \
-  -e MYSQL_DATABASE=identity_db \
-  -e MYSQL_USER=identity_user \
-  -e MYSQL_PASSWORD=identity_pass \
-  -p 3306:3306 \
-  -d mysql:8.0
+### Error Response
+```json
+{
+  "success": false,
+  "message": "Human-readable error message",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": null
+  },
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-4df2-4d8e-9c7f-4d7e5e7a4c11"
+}
 ```
 
-### 4. Security / Key Setup
+---
 
-The service signs JWTs using RS256 asymmetric keys and requires an externally-supplied private/public key pair. **No real or default key material is committed to the repository or packaged into build artifacts.** The application enforces fail-fast startup: if `JWT_PRIVATE_KEY_PATH` or `JWT_PUBLIC_KEY_PATH` is unset or points to an invalid/missing file, application context startup terminates immediately with a descriptive `IllegalStateException`.
+## 4. Local Development & Setup
 
-#### Generating a Local Development Keypair
+### Prerequisites
+- Java 21 JDK
+- Maven Wrapper (`./mvnw` or `.\mvnw.cmd`)
+- MySQL 8.0 or Docker
 
-For local development, you can generate a 2048-bit RSA keypair in PKCS#8 / X.509 PEM format using the included generator:
-
-```bash
-# Linux / macOS
-./mvnw compile exec:java -Dexec.mainClass="lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator"
-
-# Windows
-.\mvnw.cmd compile exec:java -Dexec.mainClass="lk.ac.kelaniya.ams.identity_access_service.security.RsaKeyPairGenerator"
+### 1. Environment Configuration
+Copy `.env.example` to `.env` and verify settings:
+```env
+DB_URL=jdbc:mysql://localhost:3306/identity_access_db
+DB_USERNAME=identity_user
+DB_PASSWORD=identity_pass
+SERVER_PORT=8080
+JWT_PRIVATE_KEY_PATH=file:certs/private_key.pem
+JWT_PUBLIC_KEY_PATH=file:certs/public_key.pem
+GATEWAY_JWT_PUBLIC_KEY=file:certs/gateway_public_key.pem
+SERVICE_JWT_PRIVATE_KEY=file:certs/service_private_key.pem
 ```
 
-This generates `certs/private_key.pem` and `certs/public_key.pem` in the root `certs/` folder. Alternatively, using OpenSSL:
-
+### 2. Generate Development Keypair
 ```bash
-mkdir -p certs
-openssl genpkey -algorithm RSA -out certs/private_key.pem -pkeyopt rsa_keygen_bits:2048
-openssl rsa -pubout -in certs/private_key.pem -out certs/public_key.pem
+.\mvnw.cmd compile exec:java -Dexec.mainClass="kln.ams.identityaccess.security.RsaKeyPairGenerator"
 ```
 
-#### Key Storage & Provisioning Rules
-
-> - **Key Storage Location**: Local key files must live **strictly within the gitignored `certs/` directory** in the project root or outside the repository tree altogether. Never move keys to `src/main/resources` or any trackable location.
-> - **Never Commit Keys**: `.gitignore` strictly blocks `*.pem`, `*.key`, `*private*`, and `certs/`. Committing real private keys is a critical security violation.
-> - **Production Environments**: Production keys must **never** be generated with local utilities or stored in filesystems manually. Real 2048-bit (or 4096-bit) RSA keypairs must be provisioned via your deployment secrets infrastructure (e.g., Kubernetes Secrets, AWS Secrets Manager, HashiCorp Vault, or mounted secret volumes). Set `JWT_PRIVATE_KEY_PATH` and `JWT_PUBLIC_KEY_PATH` environment variables pointing to the mounted secret paths.
-> - **Automated Tests**: Integration and unit test suites (`IdentityAccessServiceApplicationTests`, `AbstractIntegrationTest`, `RsaKeyProviderTest`, `JwtServiceTest`) automatically generate ephemeral, throwaway keypairs in temporary directories at test runtime. No pre-existing key files are required to run builds or CI.
-
-### 5. Run the Application
-
-Run the application with the default `local` Spring profile:
-
+### 3. Run Application
 ```bash
-# Linux / macOS
-./mvnw spring-boot:run
-
-# Windows
 .\mvnw.cmd spring-boot:run
 ```
 
-Flyway will automatically apply database migrations on startup.
-
-### 6. Run Tests
-
-To execute the full test suite:
-
+### 4. Run Tests
 ```bash
-# Linux / macOS
-./mvnw test
-
-# Windows
 .\mvnw.cmd test
 ```
 
-> **Integration Tests & Docker Requirement**:
-> - Unit tests run entirely in-memory without external dependencies.
-> - Integration tests (`*IntegrationTest`) use **Testcontainers** to spin up an isolated, genuine MySQL 8.0 Docker container. Docker must be running on your system for integration tests to execute.
-> - **Windows + Docker Desktop Workaround**: If Testcontainers fails to connect to Docker on Windows, configure the Docker named pipe connection by adding `docker.host=npipe:////./pipe/docker_engine` to `%USERPROFILE%\.testcontainers.properties` or by setting the environment variable `DOCKER_HOST=npipe:////./pipe/docker_engine`.
-
-## Docker Build
-
-To package and build the container image locally:
-
-```bash
-docker build -t identity-access-service .
-```
-
-The container image includes an integrated `HEALTHCHECK` checking `/actuator/health/liveness` every 30 seconds.
-
-## Health & Readiness Probes
-
-Spring Boot Actuator is configured with safe-by-default exposure (only `health` and `info` exposed over HTTP, details never leaked to unauthenticated callers).
-
-| Endpoint | Purpose | Checks |
-| :--- | :--- | :--- |
-| `GET /actuator/health/liveness` | Container liveness | Confirms the Spring Boot application context is running and responsive. Used by Docker/Kubernetes to restart crashed containers. |
-| `GET /actuator/health/readiness` | Traffic readiness | Verifies the service is ready to accept user traffic, validating active MySQL database connectivity via `DataSourceHealthIndicator`. |
-| `GET /actuator/health` | Overall health summary | High-level status indicator (`{"status":"UP"}`). |
-
-## Logging & Observability
-
-Logging is profile-aware via `logback-spring.xml`:
-- **Local (`!docker`)**: Human-readable, colorized standard console logging optimized for local developer experience.
-- **Docker (`docker`)**: Structured single-line JSON output to `stdout` powered by `logstash-logback-encoder` with standard fields (`timestamp`, `level`, `thread`, `logger`, `message`, `service`). All logs stream to container runtime log collectors (12-factor app principle); sensitive credentials and passwords are never logged.
-
-## Database Schema & Migrations
-
-Database schema evolution is managed via Flyway versioned migration scripts in `src/main/resources/db/migration/`:
-- `V1__init_schema.sql`: Base tables (`users`, `roles`, `user_roles`, `refresh_tokens`, `account_status_audit`).
-- `V2__seed_roles.sql`: Standard system roles (`OWNER`, `TENANT_RESIDENT`, `BUILDING_MANAGER`, `SECURITY_GUARD`, `SYSTEM_ADMINISTRATOR`).
-- `V3__add_failed_login_tracking.sql`: Failed login tracking (`failed_login_attempts`, `lockout_until`).
-- `V4__create_password_reset_tokens_table.sql`: Password reset token lifecycle table.
-- `V5__add_unique_constraint_to_password_reset_tokens.sql`: Token uniqueness constraints.
-- `V6__add_rejected_status.sql`: Account rejection support (`REJECTED` status).
-- `V7__seed_admin_user.sql`: Bootstrap default system administrator account.
-- `V8__add_user_roles_unique_constraint.sql`: Prevent duplicate role assignments per user.
-- `V9__create_audit_events_table.sql`: Multi-criteria security and lifecycle audit log table (`audit_events`).
-
-> **Schema Clarification — Audit Table**:
-> The legacy `account_status_audit` table created in `V1` is **superseded** by the `audit_events` table introduced in `V9`. The active application persistence layer (`AuditEvent` entity and `AuditEventRepository`) writes all security, status change, role assignment, and authentication audit records exclusively to `audit_events`.
-
-## Known Limitations & Production Gaps
-
-The following architectural decisions and prototype limitations apply to `identity-access-service`:
-1. **Password Reset Email Delivery**: In the current version, actual email/SMS transport is out of scope. Password reset tokens are generated, hashed, and stored securely, and for manual testing/prototyping purposes, the raw token is emitted as a `DEV-ONLY` diagnostic log entry. In production, an SMTP client or notification service integration would deliver the token.
-2. **Rate Limiting & Proxy IP Resolution**: Rate limiting on public auth endpoints uses an in-memory sliding-window counter keyed strictly by remote IP (`HttpServletRequest.getRemoteAddr()`). It intentionally does not inspect `X-Forwarded-For` headers to prevent header spoofing. In production deployments behind a reverse proxy or API Gateway, gateway-level rate limiting or trusted proxy header resolution should be configured.
-3. **Stateless JWT Logout**: Logout (`POST /api/v1/auth/logout`) is client-side in the current stateless JWT architecture (the client purges the stored Bearer token). Server-side token blacklisting or revocation lists (e.g. backed by Redis) are out of scope for this release.
+### 5. API Documentation
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI Specification: `http://localhost:8080/v3/api-docs`
+- Health check: `http://localhost:8080/actuator/health`
