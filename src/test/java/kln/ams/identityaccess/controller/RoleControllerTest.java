@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -173,6 +174,33 @@ class RoleControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void updateRole_PutMethodNotAllowed_Returns405() throws Exception {
+        UpdateRoleRequest request = new UpdateRoleRequest("Updated description");
+
+        mockMvc.perform(put("/api/v1/roles/" + roleId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isMethodNotAllowed());
+    }
+
+    @Test
+    void updateRole_CanonicalRoleConflict_Returns409() throws Exception {
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .name("NEW_NAME")
+                .description("Updated description")
+                .build();
+        when(roleService.updateRole(eq(roleId), any()))
+                .thenThrow(new kln.ams.identityaccess.exception.RoleConflictException("Cannot change name of canonical role: SYSTEM_ADMINISTRATOR"));
+
+        mockMvc.perform(patch("/api/v1/roles/" + roleId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ROLE_CONFLICT"));
     }
 
     @Test
