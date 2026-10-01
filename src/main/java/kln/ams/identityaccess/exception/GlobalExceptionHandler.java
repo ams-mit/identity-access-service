@@ -91,14 +91,10 @@ public class GlobalExceptionHandler {
         String rootMsg = rootCause.getMessage() != null ? rootCause.getMessage().toLowerCase(Locale.ROOT) : "";
         log.warn("Data integrity conflict: {}", rootMsg);
 
-        if (rootMsg.contains("username")) {
+        if (rootMsg.contains("username") || rootMsg.contains("email")) {
             return ResponseEntity
                     .status(HttpStatus.CONFLICT)
-                    .body(ApiErrorResponse.of("USERNAME_OR_EMAIL_ALREADY_EXISTS", "Username already exists"));
-        } else if (rootMsg.contains("email")) {
-            return ResponseEntity
-                    .status(HttpStatus.CONFLICT)
-                    .body(ApiErrorResponse.of("USERNAME_OR_EMAIL_ALREADY_EXISTS", "Email already exists"));
+                    .body(ApiErrorResponse.of("USER_ALREADY_EXISTS", "User already exists with this email or username"));
         } else if (rootMsg.contains("name")) {
             return ResponseEntity
                     .status(HttpStatus.CONFLICT)
