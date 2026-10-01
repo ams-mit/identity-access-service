@@ -45,10 +45,10 @@ public class RegisterRequest {
 
     @NotBlank(message = "Password is required")
     @ValidPassword
-    @Schema(description = "Account password (minimum 8 characters, at least one numeric digit)", example = "Password123")
+    @Schema(description = "Account password (minimum 8 characters, at least one numeric digit)", example = "Password123!")
     private String password;
 
     @NotBlank(message = "Password confirmation is required")
-    @Schema(description = "Password confirmation matching the password field", example = "Password123")
+    @Schema(description = "Password confirmation matching the password field", example = "Password123!")
     private String confirmPassword;
 }

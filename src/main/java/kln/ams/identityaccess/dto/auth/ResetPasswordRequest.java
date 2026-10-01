@@ -26,10 +26,10 @@ public class ResetPasswordRequest {
 
     @NotBlank(message = "New password is required")
     @ValidPassword
-    @Schema(description = "New password (minimum 8 characters, at least one numeric digit)", example = "NewPassword123")
+    @Schema(description = "New password (minimum 8 characters, at least one numeric digit)", example = "NewPassword123!")
     private String newPassword;
 
     @NotBlank(message = "Password confirmation is required")
-    @Schema(description = "Password confirmation matching new password", example = "NewPassword123")
+    @Schema(description = "Password confirmation matching new password", example = "NewPassword123!")
     private String confirmNewPassword;
 }

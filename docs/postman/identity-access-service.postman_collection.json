@@ -548,9 +548,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/users",
+              "raw": "{{baseUrl}}/api/v1/users?page=0&size=20",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "v1", "users"]
+              "path": ["api", "v1", "users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
             }
           }
         },
@@ -574,7 +584,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"username\": \"created.user@example.com\",\n  \"email\": \"created.user@example.com\",\n  \"password\": \"UserPassword123!\",\n  \"firstName\": \"Created\",\n  \"lastName\": \"User\",\n  \"status\": \"ACTIVE\",\n  \"roleNames\": [\"TENANT_RESIDENT\"]\n}"
+              "raw": "{\n  \"username\": \"created.user@example.com\",\n  \"email\": \"created.user@example.com\",\n  \"password\": \"UserPassword123!\",\n  \"firstName\": \"Created\",\n  \"lastName\": \"User\",\n  \"status\": \"ACTIVE\",\n  \"roles\": [\"TENANT_RESIDENT\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/users",
@@ -758,7 +768,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"SUPPORT_STAFF\",\n  \"description\": \"Support staff role\"\n}"
+              "raw": "{\n  \"name\": \"SERVICE_STAFF\",\n  \"description\": \"Service staff role\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/roles",
@@ -905,7 +915,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"permissionCodes\": [\"users:read\", \"users:write\"]\n}"
+              "raw": "{\n  \"permissionIds\": [\"550e8400-e29b-41d4-a716-446655440000\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/v1/roles/00000000-0000-0000-0000-000000000001/permissions",

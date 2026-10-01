@@ -1056,27 +1056,31 @@ List identity accounts for authorized account administration.
 {
   "success": true,
   "message": "Users retrieved successfully",
-  "data": {
-    "items": [
-      {
-        "id": "uuid",
-        "username": "john@example.com",
-        "email": "john@example.com",
-        "firstName": "John",
-        "lastName": "Perera",
-        "status": "ACTIVE",
-        "roles": [
-          "TENANT_RESIDENT"
-        ]
-      }
-    ],
+  "data": [
+    {
+      "id": "uuid",
+      "username": "john@example.com",
+      "email": "john@example.com",
+      "firstName": "John",
+      "lastName": "Perera",
+      "phone": "0771234567",
+      "status": "ACTIVE",
+      "roles": [
+        "TENANT_RESIDENT"
+      ],
+      "createdAt": "2026-09-30T12:00:00Z"
+    }
+  ],
+  "pagination": {
     "page": 0,
     "size": 20,
     "totalElements": 1,
-    "totalPages": 1
+    "totalPages": 1,
+    "hasNext": false,
+    "hasPrevious": false
   },
-  "timestamp": "...",
-  "requestId": "..."
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-..."
 }
 ```
 
@@ -1249,7 +1253,8 @@ SYSTEM_ADMINISTRATOR
 
 ```json
 {
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "reason": "Administrative activation upon identity verification"
 }
 ```
 
@@ -1646,16 +1651,18 @@ SYSTEM_ADMINISTRATOR
   "message": "Role permissions retrieved successfully",
   "data": {
     "roleId": "uuid",
+    "roleName": "SYSTEM_ADMINISTRATOR",
     "permissions": [
       {
         "id": "uuid",
         "code": "USER_MANAGE",
-        "description": "Manage identity user accounts"
+        "description": "Manage identity user accounts",
+        "active": true
       }
     ]
   },
-  "timestamp": "...",
-  "requestId": "..."
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-..."
 }
 ```
 
@@ -1691,7 +1698,7 @@ SYSTEM_ADMINISTRATOR
 ### Rules
 
 - every permission must exist;
-- duplicate permission IDs must not be persisted;
+- duplicate permission IDs must not be persisted (normalized by backend);
 - assignment must be auditable;
 - permissions must not be copied into User JWTs;
 - dependent services must continue to authorize from the canonical role contract.
@@ -1700,6 +1707,29 @@ SYSTEM_ADMINISTRATOR
 
 ```http
 200 OK
+```
+
+Example:
+
+```json
+{
+  "success": true,
+  "message": "Role permissions replaced successfully",
+  "data": {
+    "roleId": "uuid",
+    "roleName": "SYSTEM_ADMINISTRATOR",
+    "permissions": [
+      {
+        "id": "uuid",
+        "code": "USER_MANAGE",
+        "description": "Manage identity user accounts",
+        "active": true
+      }
+    ]
+  },
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-..."
+}
 ```
 
 ### Errors
@@ -1791,10 +1821,11 @@ Example:
     "active": true,
     "roles": [
       "TENANT_RESIDENT"
-    ]
+    ],
+    "roleMatches": true
   },
-  "timestamp": "...",
-  "requestId": "..."
+  "timestamp": "2026-09-30T12:00:00Z",
+  "requestId": "7f83a9b2-..."
 }
 ```
 
@@ -2067,10 +2098,16 @@ All endpoints use the global Project A API response envelope.
   "message": "Request validation failed",
   "error": {
     "code": "VALIDATION_ERROR",
-    "details": {
-      "email": "must be a valid email address",
-      "password": "must satisfy the password policy"
-    }
+    "details": [
+      {
+        "field": "email",
+        "message": "must be a valid email address"
+      },
+      {
+        "field": "password",
+        "message": "must satisfy the password policy"
+      }
+    ]
   },
   "timestamp": "2026-09-30T12:00:00Z",
   "requestId": "uuid"
@@ -2982,3 +3019,84 @@ The canonical implementation target is this document plus:
 ```
 
 Where an existing repository conflicts with this target contract, the repository must be changed to conform to the canonical contract rather than the contract being weakened to preserve obsolete implementation.
+
+---
+
+# 52. Contract Alignment Summary & Open Items
+
+This section records the alignment decisions implemented in `identity-access-service` according to the priority order:
+1. `PROJECT-A-CONTRACT-DECISIONS.md`
+2. `PROJECT-A-GLOBAL-API-STANDARD.md`
+3. `PROJECT-A-JWT-SECURITY-STANDARD.md`
+4. `IDENTITY-ACCESS-SERVICE.md`
+5. `PROJECT-A-CROSS-SERVICE-API-REGISTRY.md`
+
+### 52.1 Restored and Canonical Endpoints (AUTH-003 .. AUTH-007)
+The full suite of 24 provider endpoints is confirmed canonical and active:
+- `AUTH-003`: `POST /api/v1/auth/logout` (204 No Content, stateless token discard)
+- `AUTH-004`: `POST /api/v1/auth/register` (201 Created, default self-registration)
+- `AUTH-005`: `POST /api/v1/auth/forgot-password` (200 OK, generic timing-safe message)
+- `AUTH-006`: `POST /api/v1/auth/reset-password` (200 OK, reset password with cryptographic token)
+- `AUTH-007`: `PUT /api/v1/auth/me/password` (204 No Content, authenticated password change)
+
+### 52.2 Canonical Error Code: INVALID_RESET_TOKEN
+In `AUTH-006` (`/api/v1/auth/reset-password`), when a token is missing, expired, already consumed, or linked to an inactive account, the service responds with HTTP 400 and error code `INVALID_RESET_TOKEN` and message `"Invalid or expired password reset token"`.
+
+### 52.3 Additive Contract Fields
+The following additive fields are included in the implementation:
+- **`roleMatches`** (`Boolean`): Added to `IAM-INT-001` (`/api/v1/internal/users/{userId}/validate`). Populated when `requiredRole` query parameter is provided.
+- **`reason`** (`String`): Added to `USR-005` (`PATCH /api/v1/users/{userId}/status`) request body for audit trail tracking.
+- **`roleName`** (`String`) & **`active`** (`Boolean`): Added to `PERM-002` and `PERM-003` responses (`RolePermissionsResponse` and `PermissionSummaryResponse`).
+- **`phone`** (`String`) & **`createdAt`** (`Instant`): Retained in `UserResponse` across user management endpoints (`USR-001` .. `USR-004`).
+
+### 52.4 USR-001 List Format (Global API Standard)
+Per `PROJECT-A-GLOBAL-API-STANDARD.md`, collection list endpoints use top-level `data` array and top-level `pagination` object:
+```json
+{
+  "success": true,
+  "message": "Users retrieved successfully",
+  "data": [ ... ],
+  "pagination": {
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "hasNext": false,
+    "hasPrevious": false
+  },
+  "timestamp": "2026-10-01T08:00:00Z",
+  "requestId": "..."
+}
+```
+Validation limits: default `page=0`, `size=20`, maximum `size=100`. Sizes exceeding 100 return HTTP 400 `VALIDATION_ERROR`.
+
+### 52.5 Validation Details Format (Global API Standard)
+Per `PROJECT-A-GLOBAL-API-STANDARD.md`, validation errors are formatted as an array of field errors:
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "details": [
+      {
+        "field": "permissionIds",
+        "message": "Permission IDs cannot be empty"
+      }
+    ]
+  },
+  "timestamp": "2026-10-01T08:00:00Z",
+  "requestId": "..."
+}
+```
+
+### 52.6 Internal API Identifiers
+Internal user validation APIs are formally registered as:
+- `IAM-INT-001`: `GET /api/v1/internal/users/{userId}/validate`
+- `IAM-INT-002`: `GET /api/v1/internal/users/{userId}/status`
+
+### 52.7 Open Item for Team Lead Confirmation: Spring Boot Version
+- **Contract Specification**: Stated as Spring Boot `4.1.1` in Section 4.1 of `10-IDENTITY-ACCESS-SERVICE.md`.
+- **Repository Implementation**: Spring Boot `3.3.5` on Java 21 (since Spring Boot 4.x is not a released version; Spring Framework is at 6.x and Spring Boot is at 3.x).
+- **Status**: Documented as an open question for Team Lead confirmation in `docs/contract-changes/TEAM-LEAD-DECISIONS.md`. No code change to Spring Boot version per safety rules.
+
