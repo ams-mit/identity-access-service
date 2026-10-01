@@ -5,6 +5,7 @@ import kln.ams.identityaccess.dto.role.RoleResponse;
 import kln.ams.identityaccess.dto.role.UpdateRoleRequest;
 import kln.ams.identityaccess.entity.Role;
 import kln.ams.identityaccess.exception.DuplicateResourceException;
+import kln.ams.identityaccess.exception.RoleConflictException;
 import kln.ams.identityaccess.exception.RoleInUseException;
 import kln.ams.identityaccess.exception.RoleNotFoundException;
 import kln.ams.identityaccess.repository.RoleRepository;
@@ -17,12 +18,25 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class RoleService {
+
+    public static final Set<String> CANONICAL_ROLES = Set.of(
+            "SYSTEM_ADMINISTRATOR",
+            "APARTMENT_MANAGER",
+            "OWNER",
+            "TENANT_RESIDENT",
+            "FINANCE_OFFICER",
+            "MAINTENANCE_COORDINATOR",
+            "TECHNICIAN",
+            "SERVICE_STAFF",
+            "SECURITY_OFFICER"
+    );
 
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
@@ -65,6 +79,14 @@ public class RoleService {
     public RoleResponse updateRole(UUID roleId, UpdateRoleRequest request) {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new RoleNotFoundException("Role not found: " + roleId));
+
+        if (request.getName() != null && !request.getName().trim().isEmpty()) {
+            String newName = request.getName().trim();
+            if (CANONICAL_ROLES.contains(role.getName()) && !role.getName().equalsIgnoreCase(newName)) {
+                log.warn("Attempt to change canonical role name from '{}' to '{}' rejected", role.getName(), newName);
+                throw new RoleConflictException("Cannot change name of canonical role: " + role.getName());
+            }
+        }
 
         if (request.getDescription() != null) {
             role.setDescription(request.getDescription().trim());

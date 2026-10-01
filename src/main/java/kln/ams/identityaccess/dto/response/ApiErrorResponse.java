@@ -39,7 +39,6 @@ public class ApiErrorResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     @Builder
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     @Schema(description = "Machine-readable error detail")
     public static class ErrorDetail {
 

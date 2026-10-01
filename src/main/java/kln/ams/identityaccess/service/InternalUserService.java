@@ -33,18 +33,19 @@ public class InternalUserService {
                         .toList()
                 : Collections.emptyList();
 
-        boolean roleMatched = true;
+        Boolean roleMatched = null;
         if (requiredRole != null && !requiredRole.isBlank()) {
             roleMatched = roles.stream().anyMatch(r -> r.equalsIgnoreCase(requiredRole.trim()));
         }
 
-        boolean active = user.isActive() && roleMatched;
+        boolean active = user.isActive() && (roleMatched == null || roleMatched);
 
         return UserValidationResponse.builder()
                 .userId(user.getId())
                 .exists(true)
                 .active(active)
                 .roles(roles)
+                .roleMatches(roleMatched)
                 .build();
     }
 

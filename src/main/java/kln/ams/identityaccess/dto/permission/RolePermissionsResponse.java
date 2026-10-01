@@ -19,6 +19,9 @@ public class RolePermissionsResponse {
     @Schema(description = "Role unique identifier", example = "550e8400-e29b-41d4-a716-446655440000")
     private UUID roleId;
 
+    @Schema(description = "Canonical role name", example = "SYSTEM_ADMINISTRATOR")
+    private String roleName;
+
     @Schema(description = "List of assigned permissions")
     private List<PermissionResponse> permissions;
 }

@@ -10,6 +10,7 @@ import org.slf4j.MDC;
 
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -29,6 +30,10 @@ public class ApiResponse<T> {
     @Schema(description = "Response payload")
     private T data;
 
+    @Schema(description = "Pagination metadata for list responses")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private PaginationMetadata pagination;
+
     @Schema(description = "ISO-8601 response timestamp", example = "2026-09-30T12:00:00Z")
     private String timestamp;
 
@@ -41,6 +46,18 @@ public class ApiResponse<T> {
                 .success(true)
                 .message(message)
                 .data(data)
+                .timestamp(DateTimeFormatter.ISO_INSTANT.format(Instant.now()))
+                .requestId(currentRequestId != null ? currentRequestId : "")
+                .build();
+    }
+
+    public static <T> ApiResponse<List<T>> paginated(String message, List<T> data, PaginationMetadata pagination) {
+        String currentRequestId = MDC.get("requestId");
+        return ApiResponse.<List<T>>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .pagination(pagination)
                 .timestamp(DateTimeFormatter.ISO_INSTANT.format(Instant.now()))
                 .requestId(currentRequestId != null ? currentRequestId : "")
                 .build();

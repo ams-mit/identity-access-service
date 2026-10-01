@@ -70,30 +70,35 @@ class InternalUserControllerTest {
     }
 
     @Test
-    void validateUser_Success() throws Exception {
+    void iamInt001_validateUser_Success_AssertsEnvelope() throws Exception {
         UserValidationResponse response = UserValidationResponse.builder()
                 .userId(userId)
                 .exists(true)
                 .active(true)
                 .roles(List.of("TENANT_RESIDENT"))
+                .roleMatches(true)
                 .build();
 
         when(callerAuthorizationService.isAllowed("resident-management-service", InternalCallerAuthorizationService.USER_VALIDATION_ENDPOINT))
                 .thenReturn(true);
-        when(internalUserService.validateUser(userId, null)).thenReturn(response);
+        when(internalUserService.validateUser(userId, "TENANT_RESIDENT")).thenReturn(response);
 
-        mockMvc.perform(get("/api/v1/internal/users/" + userId + "/validate")
+        mockMvc.perform(get("/api/v1/internal/users/" + userId + "/validate?requiredRole=TENANT_RESIDENT")
                         .principal(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(allowedService, null, allowedService.getAuthorities())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("User validation successful"))
                 .andExpect(jsonPath("$.data.userId").value(userId.toString()))
                 .andExpect(jsonPath("$.data.exists").value(true))
                 .andExpect(jsonPath("$.data.active").value(true))
-                .andExpect(jsonPath("$.data.roles[0]").value("TENANT_RESIDENT"));
+                .andExpect(jsonPath("$.data.roles[0]").value("TENANT_RESIDENT"))
+                .andExpect(jsonPath("$.data.roleMatches").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
     }
 
     @Test
-    void validateUser_UnauthorizedCaller_Returns403() throws Exception {
+    void iamInt001_validateUser_UnauthorizedCaller_Returns403() throws Exception {
         when(callerAuthorizationService.isAllowed("untrusted-service", InternalCallerAuthorizationService.USER_VALIDATION_ENDPOINT))
                 .thenReturn(false);
 
@@ -101,11 +106,13 @@ class InternalUserControllerTest {
                         .principal(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(unauthorizedService, null, unauthorizedService.getAuthorities())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("CALLER_SERVICE_NOT_ALLOWED"));
+                .andExpect(jsonPath("$.error.code").value("CALLER_SERVICE_NOT_ALLOWED"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
     }
 
     @Test
-    void validateUser_NotFound_Returns404() throws Exception {
+    void iamInt001_validateUser_NotFound_Returns404() throws Exception {
         when(callerAuthorizationService.isAllowed("resident-management-service", InternalCallerAuthorizationService.USER_VALIDATION_ENDPOINT))
                 .thenReturn(true);
         when(internalUserService.validateUser(userId, null)).thenThrow(new UserNotFoundException("User not found"));
@@ -114,11 +121,13 @@ class InternalUserControllerTest {
                         .principal(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(allowedService, null, allowedService.getAuthorities())))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"));
+                .andExpect(jsonPath("$.error.code").value("USER_NOT_FOUND"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
     }
 
     @Test
-    void getUserStatus_Success() throws Exception {
+    void iamInt002_getUserStatus_Success_AssertsEnvelope() throws Exception {
         UserStatusResponse response = UserStatusResponse.builder()
                 .userId(userId)
                 .status("ACTIVE")
@@ -133,8 +142,11 @@ class InternalUserControllerTest {
                         .principal(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(allowedService, null, allowedService.getAuthorities())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("User account status retrieved successfully"))
                 .andExpect(jsonPath("$.data.userId").value(userId.toString()))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"))
-                .andExpect(jsonPath("$.data.active").value(true));
+                .andExpect(jsonPath("$.data.active").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
     }
 }

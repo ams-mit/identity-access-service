@@ -110,6 +110,33 @@ class RoleServiceTest {
     }
 
     @Test
+    void updateRole_CanonicalRoleNameChange_ThrowsRoleConflictException() {
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .name("NEW_CUSTOM_ROLE")
+                .description("Updated description")
+                .build();
+        when(roleRepository.findById(roleId)).thenReturn(Optional.of(testRole));
+
+        assertThatThrownBy(() -> roleService.updateRole(roleId, request))
+                .isInstanceOf(kln.ams.identityaccess.exception.RoleConflictException.class)
+                .hasMessageContaining("Cannot change name of canonical role: SERVICE_STAFF");
+    }
+
+    @Test
+    void updateRole_SameCanonicalRoleName_UpdatesDescriptionSuccessfully() {
+        UpdateRoleRequest request = UpdateRoleRequest.builder()
+                .name("SERVICE_STAFF")
+                .description("New updated description")
+                .build();
+        when(roleRepository.findById(roleId)).thenReturn(Optional.of(testRole));
+        when(roleRepository.save(any(Role.class))).thenReturn(testRole);
+
+        RoleResponse response = roleService.updateRole(roleId, request);
+
+        assertThat(response.getDescription()).isEqualTo("New updated description");
+    }
+
+    @Test
     void deleteRole_Success() {
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(testRole));
         when(userRoleRepository.existsByIdRoleId(roleId)).thenReturn(false);

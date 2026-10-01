@@ -10,7 +10,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import kln.ams.identityaccess.dto.response.ApiErrorResponse;
-import kln.ams.identityaccess.dto.response.PagedData;
+import kln.ams.identityaccess.dto.response.PaginationMetadata;
 import kln.ams.identityaccess.dto.user.CreateUserRequest;
 import kln.ams.identityaccess.dto.user.ReplaceUserRolesRequest;
 import kln.ams.identityaccess.dto.user.UpdateStatusRequest;
@@ -18,8 +18,10 @@ import kln.ams.identityaccess.dto.user.UpdateUserRequest;
 import kln.ams.identityaccess.dto.user.UserResponse;
 import kln.ams.identityaccess.dto.user.UserRolesResponse;
 import kln.ams.identityaccess.entity.AccountStatus;
+import kln.ams.identityaccess.exception.ValidationException;
 import kln.ams.identityaccess.service.UserService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +34,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -46,18 +49,33 @@ public class UserController {
     @Operation(summary = "List user accounts", description = "USR-001: Paginated retrieval of identity accounts with filtering and search.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Users retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation error", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "401", description = "Unauthorized", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
             @ApiResponse(responseCode = "403", description = "Forbidden - requires SYSTEM_ADMINISTRATOR", content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
     })
     @GetMapping
-    public ResponseEntity<kln.ams.identityaccess.dto.response.ApiResponse<PagedData<UserResponse>>> listUsers(
+    public ResponseEntity<kln.ams.identityaccess.dto.response.ApiResponse<List<UserResponse>>> listUsers(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) AccountStatus status,
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String search) {
-        PagedData<UserResponse> data = userService.getUsers(page, size, status, role, search);
-        return ResponseEntity.ok(kln.ams.identityaccess.dto.response.ApiResponse.ok("Users retrieved successfully", data));
+        if (size > 100) {
+            throw new ValidationException("size", "Page size must not exceed 100");
+        }
+        if (size < 1) {
+            throw new ValidationException("size", "Page size must be at least 1");
+        }
+        if (page < 0) {
+            throw new ValidationException("page", "Page index must not be negative");
+        }
+        Page<UserResponse> userPage = userService.getUsersPage(page, size, status, role, search);
+        PaginationMetadata pagination = PaginationMetadata.fromPage(userPage);
+        return ResponseEntity.ok(kln.ams.identityaccess.dto.response.ApiResponse.paginated(
+                "Users retrieved successfully",
+                userPage.getContent(),
+                pagination
+        ));
     }
 
     @Operation(summary = "Create user account", description = "USR-002: Creates a new user account with canonical role assignments.")

@@ -7,6 +7,7 @@ import kln.ams.identityaccess.entity.Permission;
 import kln.ams.identityaccess.entity.Role;
 import kln.ams.identityaccess.exception.PermissionNotFoundException;
 import kln.ams.identityaccess.exception.RoleNotFoundException;
+import kln.ams.identityaccess.exception.ValidationException;
 import kln.ams.identityaccess.repository.PermissionRepository;
 import kln.ams.identityaccess.repository.RoleRepository;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +52,7 @@ public class PermissionService {
 
         return RolePermissionsResponse.builder()
                 .roleId(roleId)
+                .roleName(role.getName())
                 .permissions(permissions)
                 .build();
     }
@@ -59,8 +62,16 @@ public class PermissionService {
         Role role = roleRepository.findById(roleId)
                 .orElseThrow(() -> new RoleNotFoundException("Role not found: " + roleId));
 
+        if (request.getPermissionIds() == null || request.getPermissionIds().isEmpty()) {
+            throw new ValidationException("permissionIds", "Permission IDs list cannot be empty");
+        }
+
+        Set<UUID> normalizedIds = new LinkedHashSet<>(request.getPermissionIds());
         Set<Permission> targetPermissions = new HashSet<>();
-        for (UUID permId : request.getPermissionIds()) {
+        for (UUID permId : normalizedIds) {
+            if (permId == null) {
+                throw new ValidationException("permissionIds", "Permission ID cannot be null");
+            }
             Permission permission = permissionRepository.findById(permId)
                     .orElseThrow(() -> new PermissionNotFoundException("Permission not found with ID: " + permId));
             targetPermissions.add(permission);
@@ -77,6 +88,7 @@ public class PermissionService {
 
         return RolePermissionsResponse.builder()
                 .roleId(roleId)
+                .roleName(role.getName())
                 .permissions(permissions)
                 .build();
     }
