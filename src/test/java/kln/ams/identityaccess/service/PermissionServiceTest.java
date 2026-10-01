@@ -81,22 +81,36 @@ class PermissionServiceTest {
         RolePermissionsResponse response = permissionService.getRolePermissions(roleId);
 
         assertThat(response.getRoleId()).isEqualTo(roleId);
+        assertThat(response.getRoleName()).isEqualTo("SYSTEM_ADMINISTRATOR");
         assertThat(response.getPermissions()).hasSize(1);
         assertThat(response.getPermissions().get(0).getCode()).isEqualTo("USER_MANAGE");
+        assertThat(response.getPermissions().get(0).isActive()).isTrue();
     }
 
     @Test
-    void replaceRolePermissions_Success() {
-        ReplaceRolePermissionsRequest request = new ReplaceRolePermissionsRequest(List.of(permId));
+    void replaceRolePermissions_Success_NormalizesDuplicates() {
+        // Passing duplicate permission IDs should normalize and succeed
+        ReplaceRolePermissionsRequest request = new ReplaceRolePermissionsRequest(List.of(permId, permId));
         when(roleRepository.findById(roleId)).thenReturn(Optional.of(testRole));
         when(permissionRepository.findById(permId)).thenReturn(Optional.of(testPerm));
 
         RolePermissionsResponse response = permissionService.replaceRolePermissions(roleId, request);
 
         assertThat(response.getRoleId()).isEqualTo(roleId);
+        assertThat(response.getRoleName()).isEqualTo("SYSTEM_ADMINISTRATOR");
         assertThat(response.getPermissions()).hasSize(1);
         assertThat(response.getPermissions().get(0).getCode()).isEqualTo("USER_MANAGE");
+        assertThat(response.getPermissions().get(0).isActive()).isTrue();
         verify(roleRepository).save(testRole);
+    }
+
+    @Test
+    void replaceRolePermissions_EmptyList_ThrowsValidationException() {
+        ReplaceRolePermissionsRequest request = new ReplaceRolePermissionsRequest(List.of());
+        when(roleRepository.findById(roleId)).thenReturn(Optional.of(testRole));
+
+        assertThatThrownBy(() -> permissionService.replaceRolePermissions(roleId, request))
+                .isInstanceOf(kln.ams.identityaccess.exception.ValidationException.class);
     }
 
     @Test

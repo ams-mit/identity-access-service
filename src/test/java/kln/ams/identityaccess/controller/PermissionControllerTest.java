@@ -78,14 +78,25 @@ class PermissionControllerTest {
 
     @Test
     void getRolePermissions_Success() throws Exception {
-        RolePermissionsResponse response = new RolePermissionsResponse(roleId, List.of(testPermResponse));
+        RolePermissionsResponse response = RolePermissionsResponse.builder()
+                .roleId(roleId)
+                .roleName("SYSTEM_ADMINISTRATOR")
+                .permissions(List.of(testPermResponse))
+                .build();
         when(permissionService.getRolePermissions(roleId)).thenReturn(response);
 
         mockMvc.perform(get("/api/v1/roles/" + roleId + "/permissions"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").exists())
                 .andExpect(jsonPath("$.data.roleId").value(roleId.toString()))
-                .andExpect(jsonPath("$.data.permissions[0].code").value("USER_MANAGE"));
+                .andExpect(jsonPath("$.data.roleName").value("SYSTEM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.data.permissions[0].id").value(permId.toString()))
+                .andExpect(jsonPath("$.data.permissions[0].code").value("USER_MANAGE"))
+                .andExpect(jsonPath("$.data.permissions[0].description").value("Manage users"))
+                .andExpect(jsonPath("$.data.permissions[0].active").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
     }
 
     @Test
@@ -101,7 +112,11 @@ class PermissionControllerTest {
     @Test
     void replaceRolePermissions_Success() throws Exception {
         ReplaceRolePermissionsRequest request = new ReplaceRolePermissionsRequest(List.of(permId));
-        RolePermissionsResponse response = new RolePermissionsResponse(roleId, List.of(testPermResponse));
+        RolePermissionsResponse response = RolePermissionsResponse.builder()
+                .roleId(roleId)
+                .roleName("SYSTEM_ADMINISTRATOR")
+                .permissions(List.of(testPermResponse))
+                .build();
         when(permissionService.replaceRolePermissions(eq(roleId), any())).thenReturn(response);
 
         mockMvc.perform(put("/api/v1/roles/" + roleId + "/permissions")
@@ -109,7 +124,44 @@ class PermissionControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.data.permissions[0].code").value("USER_MANAGE"));
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.data.roleId").value(roleId.toString()))
+                .andExpect(jsonPath("$.data.roleName").value("SYSTEM_ADMINISTRATOR"))
+                .andExpect(jsonPath("$.data.permissions[0].id").value(permId.toString()))
+                .andExpect(jsonPath("$.data.permissions[0].code").value("USER_MANAGE"))
+                .andExpect(jsonPath("$.data.permissions[0].description").value("Manage users"))
+                .andExpect(jsonPath("$.data.permissions[0].active").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void replaceRolePermissions_EmptyPermissions_Returns400ValidationError() throws Exception {
+        String invalidBody = "{\"permissionIds\": []}";
+
+        mockMvc.perform(put("/api/v1/roles/" + roleId + "/permissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(invalidBody))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.error.details").isArray())
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.requestId").exists());
+    }
+
+    @Test
+    void replaceRolePermissions_RoleNotFound_Returns404() throws Exception {
+        ReplaceRolePermissionsRequest request = new ReplaceRolePermissionsRequest(List.of(permId));
+        when(permissionService.replaceRolePermissions(eq(roleId), any()))
+                .thenThrow(new RoleNotFoundException("Role not found"));
+
+        mockMvc.perform(put("/api/v1/roles/" + roleId + "/permissions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.error.code").value("ROLE_NOT_FOUND"));
     }
 
     @Test
